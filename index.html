@@ -120,7 +120,23 @@ body.timing main .wrap{padding-bottom:120px}
 .goal b{font-family:var(--f-mono);font-weight:500;font-size:15px}
 .goal small{grid-column:1/-1;font-size:12px;color:var(--muted)}
 .goal.up b{color:var(--done)}
-.set{display:grid;grid-template-columns:44px 1fr 12px 1fr 34px;align-items:center;gap:6px}
+.set{display:grid;grid-template-columns:44px 1fr 12px 1fr 28px 30px;align-items:center;gap:5px}
+.prb{font-size:10.5px;font-weight:700;color:var(--surface);background:var(--done);border-radius:4px;padding:1px 0;text-align:center;letter-spacing:.02em}
+.field input::placeholder{color:var(--muted);opacity:.55}
+.lastsets{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.lastsets b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
+.lastsets i{font-style:normal;font-size:11px}
+.drop{font-size:13px;font-weight:500;color:var(--p-B);padding:6px 0}
+.nag{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--warn);border-radius:10px;padding:10px 12px}
+.nag span{flex:1 1 180px}
+.nag button{font-size:12.5px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.nag .go{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.prlist{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid}
+.prr{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:baseline;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+.prr:last-child{border-bottom:0}
+.prr .d{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.prr .v{font-family:var(--f-mono);font-size:12.5px;text-align:right}
+.prr small{display:block;font-size:11.5px;color:var(--muted)}
 .tag{height:30px;border-radius:7px;border:1px solid var(--line);font-family:var(--f-mono);font-size:12px;color:var(--muted)}
 .tag.t-T{border-color:var(--p-A);color:var(--p-A);font-family:var(--f-body);font-weight:700}
 .tag.t-D{border-color:var(--p-B);color:var(--p-B);font-family:var(--f-body);font-weight:700}
@@ -129,7 +145,7 @@ body.timing main .wrap{padding-bottom:120px}
 .field{position:relative;min-width:0}
 .field input{width:100%;font:500 16px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 28px 8px 10px;font-variant-numeric:tabular-nums}
 .field small{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none}
-.del{width:34px;height:34px;display:grid;place-items:center;color:var(--muted);border-radius:8px}
+.del{width:30px;height:34px;display:grid;place-items:center;color:var(--muted);border-radius:8px}
 .acts{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .add{font-size:13.5px;font-weight:500;color:var(--accent);padding:6px 0}
 .tbtn{font-size:12.5px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-variant-numeric:tabular-nums}
@@ -326,15 +342,25 @@ const SESS_DEFAULT=[
   X("s8","덤벨컬","6~8회 × 3 (고중량)","이두 메인",{t:963,r:[6,8],inc:2,rest:90}),
   X("s9","케이블 해머컬","3세트","이두",{t:972,rest:60})]}
 ];
+// 목표 세트 수(sets)와 탑세트 수(top). 영상에 세트 수가 없는 종목은 3세트로 둡니다.
+const DEF_SETS={m1:2,m6:4,t1:2,w3:2,f1:2,f3:4,s1:3},DEF_TOP={m1:1,t1:2,f1:1,s1:2};
+SESS_DEFAULT.forEach(x=>x.ex.forEach(e=>{e.sets=DEF_SETS[e.id]||3;e.top=DEF_TOP[e.id]||0}));
+const DEFMAP={};SESS_DEFAULT.forEach(x=>x.ex.forEach(e=>DEFMAP[e.id]=e));
 const ORDER=["A","B","C","D","E"];
 let SESS=[],SMAP={},EX={},routineCustom=false;
 const fin=n=>typeof n==="number"&&isFinite(n);
+function deriveTop(t){const m=String(t||"").match(/탑\s*(\d)\s*세트/);return m?Math.min(3,Number(m[1])):/탑/.test(t||"")?1:0}
+function deriveSets(t,top){if(top)return top+1;const m=String(t||"").match(/[×x]\s*(\d+)/)||String(t||"").match(/(\d+)\s*세트/);const n=m?Number(m[1]):3;return n>=1&&n<=10?n:3}
+const okInt=(n,a,b)=>Number.isInteger(n)&&n>=a&&n<=b;
 function cleanEx(e){
   if(!e||!e.id||!e.n)return null;
+  const d=DEFMAP[e.id];
+  const top=okInt(e.top,0,3)?e.top:d?d.top:deriveTop(e.tgt);
+  const sets=okInt(e.sets,1,10)?e.sets:d?d.sets:deriveSets(e.tgt,top);
   const r=Array.isArray(e.r)&&e.r.length===2&&e.r.every(n=>fin(n)&&n>0)&&e.r[0]<=e.r[1]?[e.r[0],e.r[1]]:null;
   return {id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,80),
     t:fin(e.t)&&e.t>=0?Math.round(e.t):null,r,inc:fin(e.inc)&&e.inc>=0?e.inc:0,rest:fin(e.rest)&&e.rest>0?Math.round(e.rest):90,
-    alts:Array.isArray(e.alts)?e.alts.map(a=>String(a).trim().slice(0,40)).filter(Boolean).slice(0,6):[],del:!!e.del};
+    alts:Array.isArray(e.alts)?e.alts.map(a=>String(a).trim().slice(0,40)).filter(Boolean).slice(0,6):[],sets,top,del:!!e.del};
 }
 function applyRoutine(r){
   let src=SESS_DEFAULT;routineCustom=false;
@@ -344,7 +370,7 @@ function applyRoutine(r){
       ex:x.ex.map(cleanEx).filter(e=>e&&!seen.has(e.id)&&seen.add(e.id))}});
   SMAP={};EX={};SESS.forEach(x=>{SMAP[x.id]=x;x.c="--p-"+x.id;x.ex.forEach(e=>{e.s=x.id;EX[e.id]=e})});
 }
-function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts};if(e.del)o.del=true;return o})}))}}
+function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts,sets:e.sets,top:e.top};if(e.del)o.del=true;return o})}))}}
 const activeEx=x=>x.ex.filter(e=>!e.del);
 applyRoutine(null);
 const PREFIX={m:"A",t:"B",w:"C",f:"D",s:"E"}; // 예전(요일 고정) 기록의 종목 id → 세션
@@ -411,6 +437,14 @@ function suggest(e,last){
   return {kg:t.kg,reps:t.reps,why:"지난번 무게·횟수 이상으로"};
 }
 const e1rm=t=>t.kg>0&&t.reps>0?Math.round(t.kg*(1+t.reps/30)*2)/2:0;
+const setE1=x=>e1rm({kg:num(x.kg),reps:num(x.reps)});
+const stepOf=e=>e.inc>0?e.inc:2.5;
+const roundTo=(v,st)=>Math.max(st,Math.round(v/st)*st);
+const BACKOFF=0.875,DROP=0.8;
+// 완료 세트 수: 웜업 제외, 이어진 드롭세트 묶음은 직전 세트에 포함
+function doneCount(list){let n=0;for(const x of list||[]){if(x.tag==="W"||x.tag==="D"||!(num(x.reps)>0))continue;n++}return n}
+function prBase(nm,k,idx){const en=((idx[nm]||{}).entries||[]).filter(x=>x.k<k);let kg=0,e1=0;for(const x of en)for(const q of x.sets){kg=Math.max(kg,num(q.kg));e1=Math.max(e1,setE1(q))}return {has:en.length>0,kg,e1}}
+const isPR=(x,base)=>base.has&&x.tag!=="W"&&num(x.kg)>0&&num(x.reps)>0&&(num(x.kg)>base.kg||setE1(x)>base.e1);
 
 // ---------- 세션 순환 ----------
 function nextSession(k){for(let i=KEYS.length-1;i>=0;i--){const x=KEYS[i];if(x<k&&docs[x].session)return ORDER[(ORDER.indexOf(docs[x].session)+1)%ORDER.length]}return ORDER[0]}
@@ -465,9 +499,17 @@ function renderPicker(k,b){
   return h;
 }
 
+const lsGet=k=>{try{return Number(localStorage.getItem(k))||0}catch(e){return 0}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,String(v))}catch(e){}};
+function backupNag(){
+  if(!IS_PWA||!KEYS.length||keyOf(view)!==keyOf(today()))return "";
+  const now=Date.now(),last=lsGet("split3-lastbackup");if(lsGet("split3-snooze")>now)return "";
+  const since=last||parseKey(KEYS[0]).getTime();if(now-since<14*864e5)return "";
+  return `<div class="nag"><span>${last?`마지막 백업이 ${Math.floor((now-last)/864e5)}일 전이에요.`:"아직 백업한 적이 없어요."} 기록은 이 휴대폰에만 있어서 백업해 두는 게 안전해요.</span><button class="go" data-act="export">지금 백업</button><button data-act="snooze">3일 뒤에</button></div>`;
+}
 function renderDay(){
-  const app=$("app"),k=keyOf(view),b=body(k);
-  if(!b.session||changing){app.innerHTML=renderPicker(k,b);return}
+  const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
+  if(!b.session||changing){app.innerHTML=nag+renderPicker(k,b);return}
   const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s);
   const shown=s.ex.filter(e=>!e.del||b.sets[e.id]||b.checks[e.id]);
   const n=act.filter(e=>b.checks[e.id]).length;
@@ -481,20 +523,25 @@ function renderDay(){
       <button class="chk" data-act="toggle" data-ex="${id}" aria-pressed="${on}" aria-label="${esc(nm)} 완료"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
       <div class="info"><span class="name">${esc(nm)}${nm!==e.n?`<span class="orig">(${esc(e.n)} 대신)</span>`:""}${e.del?`<span class="orig">(루틴에서 삭제됨)</span>`:""}</span><span class="meta">${meta}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:""}</div>
       <div class="side">${e.t!=null?`<a class="vid" href="${YT}&t=${e.t}" target="_blank" rel="noopener">▶ ${pad(Math.floor(e.t/60))}:${pad(e.t%60)}</a>`:""}
-        <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">기록${my.length?` <span class="n">${my.length}</span>`:""}</button></div></div>`;
+        <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">${my.length?`세트 <span class="n">${doneCount(my)}/${e.sets}</span>`:`기록 · ${e.sets}세트`}</button></div></div>`;
     if(isOpen){
       const best=((idx[nm]||{}).entries||[]).reduce((m,x)=>Math.max(m,topSet(x.sets).kg),0);
       const vol=my.filter(x=>x.tag!=="W").reduce((a,x)=>a+num(x.kg)*num(x.reps),0);
-      h+=`<div class="sets"><div class="hist">${last?`지난번 ${md(last.k)} <b>${fmtSet(topSet(last.sets))}</b> · ${last.sets.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""}</div>`;
-      if(sg)h+=`<div class="goal${sg.up?" up":""}"><span>오늘 목표</span><b>${fmtSet(sg)}</b><small>${esc(sg.why)}</small></div>`;
-      my.forEach((x,i)=>{h+=`<div class="set">
+      const base=prBase(nm,k,idx);
+      h+=`<div class="sets"><div class="hist">${last?`지난번 ${md(last.k)} · ${last.sets.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${e.sets}</b>세트</div>`;
+      if(last)h+=`<div class="lastsets">${last.sets.map((q,j)=>`<span><i>${q.tag?TAG[q.tag]:j+1}</i> <b>${fmtSet({kg:num(q.kg),reps:num(q.reps)})}</b></span>`).join("")}</div>`;
+      if(sg)h+=`<div class="goal${sg.up?" up":""}"><span>오늘 목표</span><b>${e.top?"탑 ":""}${fmtSet(sg)}</b><small>${esc(sg.why)}${e.top&&sg.kg>0?` · 백오프는 약 ${fmt(roundTo(sg.kg*BACKOFF,stepOf(e)))}kg`:""}</small></div>`;
+      let j=0;
+      my.forEach((x,i)=>{const g=x.tag==="W"?null:(last&&last.sets[j])||null;if(x.tag!=="W")j++;const pr=isPR(x,base);
+        h+=`<div class="set">
         <button class="tag t-${x.tag||"N"}" data-act="tag" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 종류 바꾸기">${x.tag?TAG[x.tag]:i+1}</button>
-        <label class="field"><input id="kg-${k}-${id}-${i}" inputmode="decimal" enterkeyhint="next" data-act="kg" data-ex="${id}" data-i="${i}" value="${esc(x.kg)}" aria-label="${i+1}세트 중량"><small>kg</small></label>
+        <label class="field"><input id="kg-${k}-${id}-${i}" inputmode="decimal" enterkeyhint="next" data-act="kg" data-ex="${id}" data-i="${i}" value="${esc(x.kg)}" placeholder="${g&&num(g.kg)>0?esc(fmt(num(g.kg))):""}" aria-label="${i+1}세트 중량"><small>kg</small></label>
         <span class="x">×</span>
-        <label class="field"><input id="rp-${k}-${id}-${i}" inputmode="numeric" enterkeyhint="done" data-act="reps" data-ex="${id}" data-i="${i}" value="${esc(x.reps)}" aria-label="${i+1}세트 횟수"><small>회</small></label>
+        <label class="field"><input id="rp-${k}-${id}-${i}" inputmode="numeric" enterkeyhint="done" data-act="reps" data-ex="${id}" data-i="${i}" value="${esc(x.reps)}" placeholder="${g&&num(g.reps)>0?esc(num(g.reps)):sg&&sg.reps?esc(sg.reps):""}" aria-label="${i+1}세트 횟수"><small>회</small></label>
+        ${pr?`<span class="prb" title="신기록">PR</span>`:"<span></span>"}
         <button class="del" data-act="delset" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`});
-      h+=`<div class="acts"><button class="add" data-act="addset" data-ex="${id}">+ 세트 추가</button><button class="tbtn" data-act="timer" data-ex="${id}">⏱ ${mmss(e.rest)} 휴식</button>${vol?`<span class="vol">볼륨 ${vol.toLocaleString()}kg</span>`:""}</div>`;
-      if(my.length)h+=`<div class="legend">세트 번호를 누르면 탑 → 드롭 → 웜업으로 바뀌어요. 웜업은 볼륨·최고 기록에서 빠져요. 횟수를 입력하면 휴식 타이머가 자동으로 시작돼요.</div>`;
+      h+=`<div class="acts"><button class="add" data-act="addset" data-ex="${id}">+ 세트 추가</button>${my.length?`<button class="drop" data-act="adddrop" data-ex="${id}">+ 드롭</button>`:""}<button class="tbtn" data-act="timer" data-ex="${id}">⏱ ${mmss(e.rest)}</button>${vol?`<span class="vol">볼륨 ${vol.toLocaleString()}kg</span>`:""}</div>`;
+      if(my.length)h+=`<div class="legend">${e.top?`탑세트 다음 세트는 백오프 무게(탑의 약 ${Math.round(BACKOFF*1000)/10}%)로, `:""}'+ 드롭'은 직전 세트의 약 ${DROP*100}% 무게로 채워져요. 무게는 미리 채워지고, 횟수는 한 만큼 입력하면 돼요(흐린 숫자는 지난번 같은 세트). 세트 번호를 누르면 탑 → 드롭 → 웜업으로 바뀌고, 웜업·드롭은 세트 수에서 빠져요.</div>`;
       const opts=[e.n,...e.alts];if(!opts.includes(nm))opts.push(nm);
       h+=`<div class="alt"><span>기구가 없으면 교체</span>${opts.map(v=>`<button class="chip${v===nm?" on":""}" data-act="setalt" data-ex="${id}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}
         <span class="altc"><input id="alt-${k}-${id}" placeholder="다른 종목 직접 입력" enterkeyhint="done" aria-label="교체할 종목 이름"><button data-act="altcustom" data-ex="${id}">적용</button></span></div>
@@ -503,7 +550,7 @@ function renderDay(){
     h+=`</div>`;
   }
   h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 이 세션에 종목 추가</button><div class="memo"><label for="memo-${k}">메모</label><textarea id="memo-${k}" data-act="memo" placeholder="컨디션, 통증, 다음에 바꿀 점">${esc(b.memo)}</textarea></div>`;
-  app.innerHTML=h;
+  app.innerHTML=nag+h;
 }
 
 function spark(vals,c){
@@ -517,6 +564,10 @@ function renderProgress(){
   const idx=buildIndex(),tk=keyOf(today()),from=keyOf(addDays(today(),-27));
   const done=KEYS.filter(k=>k<=tk&&docs[k].session),d28=done.filter(k=>k>=from);
   let h=`<div class="stats"><div class="stat"><b>${done.length}</b><span>총 운동</span></div><div class="stat"><b>${d28.length}</b><span>최근 4주</span></div><div class="stat"><b>${(d28.length/4).toFixed(1)}</b><span>주 평균 (목표 5)</span></div></div>`;
+  const prs=[];for(const [nm,o] of Object.entries(idx)){let bk=0,be=0;o.entries.forEach((x,i)=>{let tk2=0,te=0,tset=null,eset=null;for(const q of x.sets){if(num(q.kg)>tk2){tk2=num(q.kg);tset=q}if(setE1(q)>te){te=setE1(q);eset=q}}
+    if(i>0){if(tk2>bk)prs.push({k:x.k,nm,s:tset,kind:"최고 무게",c:SMAP[o.sess].c});else if(te>be)prs.push({k:x.k,nm,s:eset,kind:`추정 1RM ${fmt(te)}kg`,c:SMAP[o.sess].c})}bk=Math.max(bk,tk2);be=Math.max(be,te)})}
+  prs.sort((a,b)=>a.k<b.k?1:a.k>b.k?-1:0);
+  h+=`<div class="sec"><h3>최근 신기록</h3>${prs.length?`<div class="prlist">${prs.slice(0,8).map(x=>`<div class="prr"><span class="d">${md(x.k)}</span><span>${esc(x.nm)}<small>${x.kind}</small></span><span class="v">${fmtSet({kg:num(x.s.kg),reps:num(x.s.reps)})}</span></div>`).join("")}</div>`:`<p class="hint">같은 종목을 두 번 이상 기록하면, 지난번보다 무거운 무게나 더 높은 추정 1RM을 낸 세트가 여기 모여요.</p>`}</div>`;
   const cnt=SESS.map(s=>d28.filter(k=>docs[k].session===s.id).length),mx=Math.max(4,...cnt);
   h+=`<div class="sec"><h3>최근 4주 부위 균형</h3><div class="bal">`;
   SESS.forEach((s,i)=>{const x=lastDone(s.id,keyOf(addDays(today(),1)));const g=x?diffDays(x,tk):null;
@@ -546,13 +597,13 @@ function renderProgress(){
     h+=`</div>`;
   }
   h+=`</div>`;
-  if(IS_PWA)h+=`<div class="sec"><h3>백업</h3><p class="hint">기록은 이 휴대폰 안에만 있어요. 가끔 백업 파일을 저장해 두면 휴대폰을 바꿔도 되살릴 수 있어요.</p><div class="backup"><button data-act="export">기록 백업 파일 저장</button><label for="importFile">백업 파일 불러오기</label></div></div>`;
+  if(IS_PWA){const lb=lsGet("split3-lastbackup");h+=`<div class="sec"><h3>백업</h3><p class="hint">기록은 이 휴대폰 안에만 있어요. 마지막 백업: <b>${lb?`${md(keyOf(new Date(lb)))} (${agoText(Math.floor((Date.now()-lb)/864e5))})`:"아직 없음"}</b>. 2주가 지나면 운동 화면에서 알려 드려요.</p><div class="backup"><button data-act="export">기록 백업 파일 저장</button><label for="importFile">백업 파일 불러오기</label></div></div>`}
   $("app").innerHTML=h;
 }
 
 // ---------- 루틴 편집 ----------
 let rsel="A",edState=null;
-function exMeta(e){return [e.tgt,e.part,e.r?`목표 ${e.r[0]}~${e.r[1]}회${e.inc?` · +${fmt(e.inc)}kg`:""}`:"",`휴식 ${mmss(e.rest)}`].filter(Boolean).map(esc).join(" · ")}
+function exMeta(e){return [`${e.sets}세트${e.top?` (탑 ${e.top})`:""}`,e.tgt,e.part,e.r?`목표 ${e.r[0]}~${e.r[1]}회${e.inc?` · +${fmt(e.inc)}kg`:""}`:"",`휴식 ${mmss(e.rest)}`].filter(Boolean).map(esc).join(" · ")}
 function renderRoutine(){
   const s=SMAP[rsel],act=activeEx(s);
   let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
@@ -584,13 +635,15 @@ function openEditor(st){
   if(st.kind==="sess"){const s=SMAP[st.sid];$("edTitle").textContent="세션 이름 바꾸기";$("edDel").hidden=true;
     f=fld("ed-sname","세션 이름",s.name,'maxlength="30" autocomplete="off"')+fld("ed-sshort","짧은 이름 (최대 4자)",s.short,'maxlength="4" autocomplete="off"',"주간 달력과 기록 탭에 표시돼요");
   }else{
-    const e=st.id?EX[st.id]:{n:"",tgt:"",part:"",note:"",t:null,r:null,inc:0,rest:90,alts:[]};
+    const e=st.id?EX[st.id]:{n:"",tgt:"",part:"",note:"",t:null,r:null,inc:0,rest:90,alts:[],sets:3,top:0};
     $("edTitle").textContent=st.id?"종목 수정":`${SMAP[st.sid].name}에 종목 추가`;$("edDel").hidden=!st.id;
     f=fld("ed-n","종목 이름 *",e.n,'maxlength="40" autocomplete="off" enterkeyhint="next"')
      +fld("ed-tgt","목표 (화면 표시용)",e.tgt,'maxlength="40" placeholder="예: 10~12회 × 3" autocomplete="off"')
      +fld("ed-part","타깃 부위",e.part,'maxlength="30" placeholder="예: 광배" autocomplete="off"')
      +`<div class="efrow">${fld("ed-lo","반복 최소",e.r?e.r[0]:"",'inputmode="numeric" placeholder="예: 8"')}${fld("ed-hi","반복 최대",e.r?e.r[1]:"",'inputmode="numeric" placeholder="예: 12"')}${fld("ed-inc","증량 kg",e.inc||"",'inputmode="decimal" placeholder="예: 2.5"')}</div>`
      +`<small style="font-size:11.5px;color:var(--muted);margin-top:-6px">반복 범위를 넣으면 '오늘 목표'를 계산해요. 최대 횟수에 닿으면 증량 kg만큼 올리라고 제안해요.</small>`
+     +`<div class="efrow" style="grid-template-columns:1fr 1fr">${fld("ed-sets","목표 세트 수",e.sets,'inputmode="numeric" placeholder="3"')}<label class="ef" for="ed-top"><span>탑세트 수</span><select id="ed-top">${[0,1,2,3].map(v=>`<option value="${v}"${v===e.top?" selected":""}>${v?v+"세트":"없음"}</option>`).join("")}</select></label></div>`
+     +`<small style="font-size:11.5px;color:var(--muted);margin-top:-6px">목표 세트를 채우면 자동으로 완료 체크돼요. 탑세트를 정하면 첫 세트가 탑으로 표시되고, 그다음 세트는 백오프 무게로 채워져요.</small>`
      +`<label class="ef" for="ed-rest"><span>세트 사이 휴식</span><select id="ed-rest">${[...new Set([...REST_OPTS,e.rest])].sort((a,b)=>a-b).map(v=>`<option value="${v}"${v===e.rest?" selected":""}>${mmss(v)}</option>`).join("")}</select></label>`
      +fld("ed-alts","대체 종목 (쉼표로 구분)",e.alts.join(", "),'maxlength="200" placeholder="예: 바벨로우, 덤벨로우" autocomplete="off"',"기구가 차 있을 때 바로 바꿀 수 있어요")
      +fld("ed-note","메모",e.note,'maxlength="80" placeholder="예: 마지막 세트 드롭세트" autocomplete="off"')
@@ -614,7 +667,8 @@ $("edForm").addEventListener("submit",ev=>{
   if(lo||hi){const a=Number(lo),b=Number(hi);if(!(a>0&&b>0&&Number.isInteger(a)&&Number.isInteger(b)&&a<=b)){edErr("반복 범위는 최소·최대를 둘 다 정수로, 최소 ≤ 최대가 되게 넣어 주세요.");return}r=[a,b]}
   const incS=v("ed-inc").replace(",",".");const inc=incS===""?0:Number(incS);if(!(inc>=0)||inc>50){edErr("증량 kg은 0~50 사이 숫자로 넣어 주세요.");return}
   const tS=v("ed-t");let t=null;if(tS){const m=tS.match(/^(\d{1,2}):?(\d{2})$/);if(!m||Number(m[2])>59){edErr("영상 위치는 07:20처럼 분:초로 넣어 주세요.");return}t=Number(m[1])*60+Number(m[2])}
-  const fields={n,tgt:v("ed-tgt"),part:v("ed-part"),note:v("ed-note"),r,inc,rest:Number($("ed-rest").value)||90,t,alts:v("ed-alts").split(/[,，]/).map(x=>x.trim()).filter(x=>x&&x!==n)};
+  const setsN=Number(v("ed-sets")||3);if(!okInt(setsN,1,10)){edErr("목표 세트 수는 1~10 사이 정수로 넣어 주세요.");return}
+  const fields={sets:setsN,top:Number($("ed-top").value)||0,n,tgt:v("ed-tgt"),part:v("ed-part"),note:v("ed-note"),r,inc,rest:Number($("ed-rest").value)||90,t,alts:v("ed-alts").split(/[,，]/).map(x=>x.trim()).filter(x=>x&&x!==n)};
   if(edState.id){Object.assign(EX[edState.id],fields);toast("종목을 수정했어요")}
   else{const id="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);SMAP[sid].ex.push({id,...fields});toast(`${n}을(를) 추가했어요`)}
   closeEditor();saveRoutine();
@@ -683,6 +737,9 @@ function tick(){
 setInterval(()=>{if(timer)tick()},250);
 function restoreTimer(){try{const t=JSON.parse(localStorage.getItem("split3-timer")||"null");if(t&&t.end>Date.now()-15000){timer=t;tick()}}catch(e){}}
 
+// 목표 세트 수를 채우는 순간 완료 체크 (직접 해제하면 다시 체크하지 않음)
+function autoCheck(b,id,before){const e=EX[id],after=doneCount(b.sets[id]);if(e&&before<e.sets&&after>=e.sets&&!b.checks[id]){b.checks[id]=true;return true}return false}
+
 // ---------- 입력 ----------
 document.addEventListener("click",ev=>{
   const t=ev.target.closest("[data-act]");if(!t||t.tagName==="INPUT"||t.tagName==="TEXTAREA")return;
@@ -698,6 +755,7 @@ document.addEventListener("click",ev=>{
   if(act==="tstop"){stopTimer();return}
   if(act==="timer"){const b=body(k);startTimer(EX[id].rest,exName(id,b));return}
   if(act==="export"){exportBackup();return}
+  if(act==="snooze"){lsSet("split3-snooze",Date.now()+3*864e5);render();return}
   if(act==="rsel"){rsel=t.dataset.s;render();return}
   if(act==="editsess"){openEditor({kind:"sess",sid:rsel});return}
   if(act==="editex"){openEditor({kind:"ex",id});return}
@@ -722,17 +780,27 @@ document.addEventListener("click",ev=>{
     return;
   }
   if(act==="toggle"){if(b.checks[id])delete b.checks[id];else b.checks[id]=true;persist(k,b);return}
-  if(act==="addset"){
-    const list=b.sets[id]||(b.sets[id]=[]),nm=exName(id,b);
-    let kg="",reps="";
-    if(list.length){const p=list[list.length-1];kg=p.kg;reps=p.reps}
-    else{const en=((buildIndex()[nm]||{}).entries||[]).filter(x=>x.k<k),sg=suggest(EX[id],en[en.length-1]);if(sg){kg=sg.kg>0?sg.kg:"";reps=sg.reps||""}}
-    list.push({kg,reps});persist(k,b);
+  if(act==="addset"||act==="adddrop"){
+    const e=EX[id],list=b.sets[id]||(b.sets[id]=[]),nm=exName(id,b),st=stepOf(e);
+    const p=list[list.length-1],tops=list.filter(x=>x.tag==="T").length;
+    const fromSuggest=()=>{const en=((buildIndex()[nm]||{}).entries||[]).filter(x=>x.k<k),l=en[en.length-1],sg=suggest(e,l);if(sg)return {kg:sg.kg>0?sg.kg:"",reps:sg.reps||""};return {kg:"",reps:""}};
+    let row;
+    if(act==="adddrop"){if(!p)return;row={kg:num(p.kg)>0?roundTo(num(p.kg)*DROP,st):p.kg,reps:p.reps,tag:"D"}}
+    else if(!p){row=fromSuggest();if(e.top)row.tag="T"}
+    else if(p.tag==="W"){row=e.top&&!tops?{...fromSuggest(),tag:"T"}:{kg:p.kg,reps:p.reps}}
+    else if(p.tag==="T"&&tops<e.top){row={kg:p.kg,reps:p.reps,tag:"T"}}
+    else if(p.tag==="T"){row={kg:num(p.kg)>0?roundTo(num(p.kg)*BACKOFF,st):p.kg,reps:num(p.reps)>0?num(p.reps)+2:p.reps}}
+    else if(p.tag==="D"){const q=[...list].reverse().find(x=>x.tag!=="D"&&x.tag!=="W")||p;row={kg:q.kg,reps:q.reps}}
+    else row={kg:p.kg,reps:p.reps};
+    row.reps="";  // 횟수는 실제로 한 만큼 직접 입력 (입력하는 순간 세트 완료·타이머·신기록 판정)
+    list.push(row);persist(k,b);
     requestAnimationFrame(()=>{const el=$(`kg-${k}-${id}-${list.length-1}`);if(el){el.focus();el.select&&el.select()}});
     return;
   }
   if(act==="delset"){const list=b.sets[id]||[];list.splice(Number(t.dataset.i),1);if(!list.length)delete b.sets[id];persist(k,b);return}
-  if(act==="tag"){const s=(b.sets[id]||[])[Number(t.dataset.i)];if(!s)return;const nt=TAG_NEXT[s.tag||""];if(nt)s.tag=nt;else delete s.tag;persist(k,b);return}
+  if(act==="tag"){const list=b.sets[id]||[],i=Number(t.dataset.i),s=list[i];if(!s)return;const before=doneCount(list);const nt=TAG_NEXT[s.tag||""];if(nt)s.tag=nt;else delete s.tag;
+    const pv=list[i-1];if(s.tag==="D"&&pv&&num(pv.kg)>0&&num(s.kg)===num(pv.kg))s.kg=roundTo(num(pv.kg)*DROP,stepOf(EX[id]));
+    if(autoCheck(b,id,before))toast(`${exName(id,b)} ${EX[id].sets}세트 완료`);persist(k,b);return}
   if(act==="setalt"){const v=t.dataset.v;if(v===EX[id].n)delete b.alts[id];else b.alts[id]=v;persist(k,b);return}
   if(act==="altcustom"){const v=($(`alt-${k}-${id}`).value||"").trim().slice(0,40);if(!v){toast("교체할 종목 이름을 입력해 주세요");return}
     document.activeElement&&document.activeElement.blur&&document.activeElement.blur();b.alts[id]=v;persist(k,b);return}
@@ -746,8 +814,13 @@ document.addEventListener("change",ev=>{
   const v=t.value.trim().replace(",",".");const n=v===""?"":Number(v);
   if(v!==""&&(!isFinite(n)||n<0)){t.value=s[t.dataset.act]??"";return}
   if(s[t.dataset.act]===n)return;
-  s[t.dataset.act]=n;persist(k,b,true);
-  if(t.dataset.act==="reps"&&n>0&&s.tag!=="W")startTimer(EX[id].rest,exName(id,b));
+  const nm=exName(id,b),base=prBase(nm,k,buildIndex()),wasPR=isPR(s,base),before=doneCount(list);
+  s[t.dataset.act]=n;
+  const nowPR=isPR(s,base),done=autoCheck(b,id,before);
+  persist(k,b,true);
+  if(nowPR&&!wasPR)toast(`신기록! ${nm} ${fmtSet({kg:num(s.kg),reps:num(s.reps)})}${done?` · ${EX[id].sets}세트 완료`:""}`);
+  else if(done)toast(`${nm} ${EX[id].sets}세트 완료`);
+  if(t.dataset.act==="reps"&&n>0&&s.tag!=="W")startTimer(EX[id].rest,nm);
 });
 document.addEventListener("keydown",ev=>{
   const t=ev.target;if(ev.key!=="Enter"||!t.id)return;
@@ -759,10 +832,10 @@ document.addEventListener("focusout",()=>setTimeout(()=>{if(pendingRender)render
 async function exportBackup(){
   const data=JSON.stringify({app:"split3-log",version:3,exportedAt:new Date().toISOString(),days:docs,routine:routineCustom?routineData():null});
   const name=`운동일지-백업-${keyOf(today())}.json`,file=new File([data],name,{type:"application/json"});
-  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});toast("백업 파일을 공유했어요");return}}
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});lsSet("split3-lastbackup",Date.now());toast("백업 파일을 저장했어요");render();return}}
   catch(e){if(e&&e.name==="AbortError")return}
   const a=document.createElement("a");a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();
-  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast("백업 파일을 저장했어요");
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);lsSet("split3-lastbackup",Date.now());toast("백업 파일을 저장했어요");render();
 }
 $("importFile").addEventListener("change",async ev=>{
   const f=ev.target.files&&ev.target.files[0];ev.target.value="";if(!f||!backend||!backend.saveAll)return;

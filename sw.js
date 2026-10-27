@@ -1,6 +1,6 @@
 // 운동일지 오프라인 지원: 앱 파일을 저장해 두고, 인터넷이 없어도 열리게 합니다.
 // 앱을 수정해서 다시 올릴 때는 아래 버전 숫자를 하나 올려 주세요.
-const CACHE = "split3-v3";
+const CACHE = "split3-v5";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
