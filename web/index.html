@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>3분할 운동일지</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="운동일지">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1B1E24" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<script>window.__PWA=1</script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-column phone app. Header = title + 운동/기록 tabs, week strip on the 운동 tab.
+   Sessions rotate in order (가슴→광배→하체→어깨→승모) instead of being pinned to weekdays.
+   Session colors follow competition bumper plates (red, blue, yellow, green) + gray. */
+:root{
+  --bg:#F3F4F6; --surface:#FFFFFF; --ink:#16181D; --muted:#626874; --line:#DDE0E6; --accent:#1F5FAF; --done:#2E7D4F; --warn:#B4541A;
+  --p-A:#C8372D; --p-B:#1F5FAF; --p-C:#C99700; --p-D:#2E7D4F; --p-E:#5E6673; --p-rest:#A9AEB8;
+  --f-display:"Barlow Condensed","IBM Plex Sans KR",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111317; --surface:#1B1E24; --ink:#ECEEF2; --muted:#9AA0AB; --line:#2C3038; --accent:#6EA0E8; --done:#5CC08A; --warn:#E59A5C;
+  --p-A:#E8645A; --p-B:#6EA0E8; --p-C:#E9C04A; --p-D:#5CC08A; --p-E:#A3AAB6; --p-rest:#5A606B; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111317; --surface:#1B1E24; --ink:#ECEEF2; --muted:#9AA0AB; --line:#2C3038; --accent:#6EA0E8; --done:#5CC08A; --warn:#E59A5C;
+  --p-A:#E8645A; --p-B:#6EA0E8; --p-C:#E9C04A; --p-D:#5CC08A; --p-E:#A3AAB6; --p-rest:#5A606B; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
+[hidden]{display:none!important}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:640px;margin:0 auto}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+header .wrap{padding-block:10px;display:grid;gap:10px}
+.top{display:flex;align-items:center;gap:10px}
+h1{font-family:var(--f-display);font-weight:700;font-size:21px;letter-spacing:.01em;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:2px}
+.tabs button{font-size:13px;font-weight:500;padding:5px 14px;border-radius:7px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.nav{display:flex;align-items:center;gap:4px}
+.nav .range{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;flex:1;text-align:center}
+.icon{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.icon:active{background:var(--line)}
+.today{font-size:12px;font-weight:500;padding:5px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+.strip{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.day{display:grid;justify-items:center;gap:1px;padding:5px 0 6px;border-radius:10px;min-width:0}
+.day .dw{font-size:11.5px;color:var(--muted)}
+.day .dn{font-family:var(--f-display);font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.day .sl{font-size:11px;font-weight:700;color:var(--c);line-height:1.3;white-space:nowrap}
+.day .sl.rest{color:var(--muted);font-weight:400}
+.day .bar{width:62%;height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:2px}
+.day .bar i{display:block;height:100%;background:var(--c)}
+.day.sel{background:var(--bg)}
+.day.is-today .dw{color:var(--ink);font-weight:700}
+.weeksum{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.weeksum b{color:var(--ink);font-weight:500}
+.weeksum .mono{font-family:var(--f-mono)}
+
+main .wrap{padding-block:18px 40px;display:grid;gap:14px}
+body.timing main .wrap{padding-bottom:120px}
+.loading{color:var(--muted);text-align:center;padding:40px 0}
+.dayhead{display:grid;grid-template-columns:1fr auto;align-items:end;gap:4px 10px;border-left:6px solid var(--c);padding-left:12px}
+.dayhead .k{font-size:12px;letter-spacing:.06em;color:var(--muted);font-weight:500;grid-column:1/-1}
+.dayhead h2{margin:0;font-size:22px;font-weight:700;text-wrap:balance;min-width:0}
+.dayhead .prog{font-size:13px;color:var(--muted);grid-column:1}
+.dayhead .prog b{font-family:var(--f-mono);color:var(--ink);font-weight:500}
+.dayhead .chg{grid-column:2;grid-row:2/4;align-self:center;font-size:12.5px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+
+.advice{font-size:13.5px;color:var(--warn);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.pick{display:grid;gap:2px;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--c);border-radius:12px;padding:12px 14px}
+.pick .pk{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.pick b{font-size:17px}
+.pick .pa{font-size:12.5px;color:var(--muted)}
+.pick.next{padding:16px 16px 16px 14px;border-width:2px 2px 2px 8px;border-color:var(--c)}
+.pick.next b{font-size:21px}
+.pick.cur{opacity:.6}
+.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+.ghost{font-size:13px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:7px 14px;background:var(--surface)}
+
+.list{display:grid;gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid;min-width:0}
+.row{display:grid;grid-template-columns:44px 1fr auto;align-items:start;gap:4px;padding:12px 10px 12px 6px}
+.chk{width:44px;height:44px;display:grid;place-items:center;margin-top:-8px}
+.chk span{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;transition:background .15s,border-color .15s}
+.chk[aria-pressed="true"] span{background:var(--done);border-color:var(--done)}
+.chk svg{opacity:0;color:var(--surface)}
+.chk[aria-pressed="true"] svg{opacity:1}
+.info{min-width:0;display:grid;gap:2px}
+.name{font-weight:700;font-size:16px;line-height:1.35}
+.name .orig{font-weight:400;font-size:12px;color:var(--muted);margin-left:4px}
+.card.done .name{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.meta{font-size:13px;color:var(--muted)}
+.meta .tg{font-family:var(--f-mono);font-size:12.5px;color:var(--ink)}
+.upb{display:inline-block;font-size:11px;font-weight:700;color:var(--done);border:1px solid var(--done);border-radius:4px;padding:0 5px;margin-left:4px;vertical-align:1px}
+.note{font-size:12.5px;color:var(--muted);padding-left:8px;border-left:2px solid var(--line);margin-top:2px}
+.side{display:grid;justify-items:end;gap:6px}
+.vid{font-family:var(--f-mono);font-size:12px;color:var(--accent);text-decoration:none;padding:2px 0;white-space:nowrap}
+.logbtn{font-size:12px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.logbtn[aria-expanded="true"]{color:var(--ink);border-color:var(--ink)}
+.logbtn .n{font-family:var(--f-mono)}
+
+.sets{border-top:1px dashed var(--line);padding:10px 12px 12px;display:grid;gap:8px;min-width:0}
+.hist{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.hist b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
+.goal{display:grid;grid-template-columns:auto 1fr;align-items:baseline;gap:0 8px;background:var(--bg);border-radius:8px;padding:8px 10px}
+.goal span{font-size:12px;color:var(--muted)}
+.goal b{font-family:var(--f-mono);font-weight:500;font-size:15px}
+.goal small{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.goal.up b{color:var(--done)}
+.set{display:grid;grid-template-columns:44px 1fr 12px 1fr 28px 30px;align-items:center;gap:5px}
+.prb{font-size:10.5px;font-weight:700;color:var(--surface);background:var(--done);border-radius:4px;padding:1px 0;text-align:center;letter-spacing:.02em}
+.field input::placeholder{color:var(--muted);opacity:.55}
+.lastsets{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.lastsets b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
+.lastsets i{font-style:normal;font-size:11px}
+.drop{font-size:13px;font-weight:500;color:var(--p-B);padding:6px 0}
+.nag{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--warn);border-radius:10px;padding:10px 12px}
+.nag span{flex:1 1 180px}
+.nag button{font-size:12.5px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.nag .go{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.prlist{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:grid}
+.prr{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:baseline;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+.prr:last-child{border-bottom:0}
+.prr .d{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.prr .v{font-family:var(--f-mono);font-size:12.5px;text-align:right}
+.prr small{display:block;font-size:11.5px;color:var(--muted)}
+.tag{height:30px;border-radius:7px;border:1px solid var(--line);font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.tag.t-T{border-color:var(--p-A);color:var(--p-A);font-family:var(--f-body);font-weight:700}
+.tag.t-D{border-color:var(--p-B);color:var(--p-B);font-family:var(--f-body);font-weight:700}
+.tag.t-W{border-style:dashed;font-family:var(--f-body)}
+.set .x{text-align:center;color:var(--muted);font-size:13px}
+.field{position:relative;min-width:0}
+.field input{width:100%;font:500 16px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 28px 8px 10px;font-variant-numeric:tabular-nums}
+.field small{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);pointer-events:none}
+.del{width:30px;height:34px;display:grid;place-items:center;color:var(--muted);border-radius:8px}
+.acts{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.add{font-size:13.5px;font-weight:500;color:var(--accent);padding:6px 0}
+.tbtn{font-size:12.5px;font-weight:500;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-variant-numeric:tabular-nums}
+.vol{font-size:12px;color:var(--muted);font-family:var(--f-mono);margin-left:auto}
+.legend{font-size:11.5px;color:var(--muted)}
+.alt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-top:1px solid var(--line);padding-top:10px}
+.alt > span{font-size:12px;color:var(--muted);margin-right:2px}
+.chip{font-size:12.5px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:var(--surface)}
+.chip.on{border-color:var(--ink);font-weight:700}
+.altc{display:flex;gap:6px;flex:1 1 180px;min-width:0}
+.altc input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 9px}
+.altc button{font-size:12.5px;font-weight:500;color:var(--accent);padding:0 6px}
+.memo{display:grid;gap:6px}
+.memo label{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.memo textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:72px;resize:vertical;width:100%}
+
+.sec{display:grid;gap:8px}
+.sec h3{margin:0;font-size:13px;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:2px;min-width:0}
+.stat b{font-family:var(--f-display);font-size:26px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.bal{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
+.balr{display:grid;grid-template-columns:76px 1fr 92px;align-items:center;gap:8px;font-size:13px}
+.balr .bt{height:8px;border-radius:4px;background:var(--bg);overflow:hidden}
+.balr .bt i{display:block;height:100%;background:var(--c);border-radius:4px}
+.balr .bn{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.balr .bn.stale{color:var(--warn)}
+.pgroup{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pgroup h4{margin:0;padding:9px 12px;font-size:13.5px;border-left:5px solid var(--c);border-bottom:1px solid var(--line)}
+.prow{width:100%;display:grid;grid-template-columns:1fr 72px 58px;align-items:center;gap:8px;text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+.pgroup > :last-child{border-bottom:0}
+.prow .pn{font-weight:500;font-size:14px;display:block}
+.prow .pl{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.prow .pb{font-family:var(--f-mono);font-size:12.5px;text-align:right}
+.prow.empty{color:var(--muted)}
+.prow.empty .pn{font-weight:400}
+.spark{width:72px;height:24px;display:block}
+.pdet{padding:4px 12px 10px;border-bottom:1px solid var(--line);overflow-x:auto}
+.pdet table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.pdet th{font-weight:500;color:var(--muted);text-align:left;padding:4px 6px 4px 0;font-size:11.5px}
+.pdet td{padding:4px 6px 4px 0;border-top:1px solid var(--line);white-space:nowrap}
+.pdet td.mono{font-family:var(--f-mono)}
+.backup{display:flex;flex-wrap:wrap;gap:8px}
+.backup button,.backup label{font-size:13px;font-weight:500;color:var(--ink);border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;cursor:pointer}
+.backup input{display:none}
+
+.tbar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--ink);color:var(--surface);padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.tbar .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:8px}
+.tbar .tl{font-size:12.5px;opacity:.8;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbar .tt{font-family:var(--f-mono);font-size:28px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.tbar button{color:var(--surface);border:1px solid currentColor;border-radius:8px;font-size:13px;font-weight:500;padding:7px 10px;opacity:.9}
+.tbar .tp{position:absolute;left:0;top:0;height:3px;background:var(--p-C)}
+.tbar.done{background:var(--done)}
+.sheetbg{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.4);display:grid;align-items:end}
+.sheet{background:var(--surface);border-radius:16px 16px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:14px;max-width:640px;width:100%;margin:0 auto}
+.sheet p{margin:0;font-size:15px}
+.sheet .btns{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.sheet.ed{max-height:88vh;overflow-y:auto;gap:12px;border-radius:16px 16px 0 0}
+.sheet h3{margin:0;font-size:17px}
+.sheet.ed .btns{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom,0px));background:var(--surface);padding-block:10px calc(10px + env(safe-area-inset-bottom,0px));margin-bottom:calc(-18px - env(safe-area-inset-bottom,0px));border-top:1px solid var(--line)}
+.ef{display:grid;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+.ef input,.ef select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.ef small{font-size:11.5px}
+.efrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.ederr{color:var(--p-A);font-size:13px;margin:0}
+.sheet .del-ex{color:var(--p-A);border-color:transparent;padding-left:0}
+.rsess{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.rs{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 0;font-weight:700;font-size:14px;color:var(--c)}
+.rs.on{border:2px solid var(--c);background:var(--bg)}
+.rrow{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:8px 12px 8px 6px;border-bottom:1px solid var(--line)}
+.rmv{display:grid;gap:2px}
+.rmv button{width:32px;height:26px;border-radius:6px;color:var(--muted);font-size:14px}
+.rmv button:disabled{opacity:.25;cursor:default}
+.sm{padding:5px 12px;font-size:12.5px}
+.lnk{font-size:12.5px;color:var(--muted);text-decoration:underline;padding:2px 0}
+.addex{justify-self:start;font-size:14px;font-weight:500;color:var(--accent);padding:6px 2px}
+.sheet button{font-size:14px;font-weight:500;border-radius:10px;padding:9px 16px;border:1px solid var(--line)}
+.sheet .ok{background:var(--p-A);border-color:var(--p-A);color:#fff}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);font-size:13px;padding:9px 16px;border-radius:999px;z-index:40;max-width:calc(100% - 32px);text-align:center}
+body.timing .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.status{font-size:12px;color:var(--muted);text-align:center;margin:0 0 8px}
+.status.err{color:var(--p-A)}
+footer{font-size:12px;color:var(--muted);text-align:center;padding:0 16px 24px}
+footer a{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>3분할 운동일지</h1>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-day" data-act="tab" data-t="day" aria-selected="true">운동</button>
+        <button role="tab" id="tab-prog" data-act="tab" data-t="prog" aria-selected="false">기록</button>
+        <button role="tab" id="tab-routine" data-act="tab" data-t="routine" aria-selected="false">루틴</button>
+      </div>
+    </div>
+    <div id="weekbox">
+      <div class="nav">
+        <button class="icon" data-act="prev" aria-label="지난 주"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <span class="range" id="range">—</span>
+        <button class="icon" data-act="next" aria-label="다음 주"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>
+        <button class="today" data-act="today">오늘</button>
+      </div>
+      <div class="strip" id="strip"></div>
+    </div>
+    <div class="weeksum" id="weeksum"></div>
+  </div>
+</header>
+
+<main><div class="wrap" id="app"><p class="loading">기록을 불러오는 중…</p></div></main>
+<p class="status" id="status"></p>
+<footer>루틴 출처: <a href="https://www.youtube.com/watch?v=hIJhYHw7vSA" target="_blank" rel="noopener">이도황 · 더 큰 프레임과 사이즈를 위한 3분할 루틴</a></footer>
+<section class="wrap" id="watchSync" style="padding-bottom:24px;font-size:13px"></section>
+
+<div class="tbar" id="tbar" hidden>
+  <div class="tp" id="tprog"></div>
+  <div class="in">
+    <div style="min-width:0"><div class="tl" id="tlabel"></div><div class="tt" id="ttime">0:00</div></div>
+    <button data-act="tminus" aria-label="15초 줄이기">−15</button>
+    <button data-act="tplus" aria-label="15초 늘리기">+15</button>
+    <button data-act="tstop">끝</button>
+  </div>
+</div>
+<div class="sheetbg" id="sheet" style="z-index:35" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetText">
+    <p id="sheetText"></p>
+    <div class="btns"><button id="sheetNo" type="button">취소</button><button class="ok" id="sheetYes" type="button">확인</button></div>
+  </div>
+</div>
+<div class="sheetbg" id="editor" hidden>
+  <form class="sheet ed" id="edForm" novalidate role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <h3 id="edTitle"></h3>
+    <div id="edFields" style="display:grid;gap:12px"></div>
+    <p class="ederr" id="edErr" hidden></p>
+    <div class="btns"><button type="button" class="del-ex" id="edDel">루틴에서 삭제</button><span style="flex:1"></span><button type="button" id="edCancel">취소</button><button type="submit" class="ok">저장</button></div>
+  </form>
+</div>
+<div class="toast" id="toast" hidden></div>
+<input id="importFile" type="file" accept="application/json,.json" hidden>
+
+<script>
+const IS_PWA=!!window.__PWA;
+const YT="https://www.youtube.com/watch?v=hIJhYHw7vSA";
+// r: 목표 반복 범위(영상 기준), inc: 증량 단위(kg), rest: 기본 휴식(초), alts: 대체 종목
+function X(id,n,tgt,part,o){o=o||{};return {id,n,tgt,part,note:o.note||"",t:o.t==null?null:o.t,r:o.r||null,inc:o.inc||0,rest:o.rest||90,alts:o.alts||[]}}
+const SESS_DEFAULT=[
+ {id:"A",name:"가슴 위주 밀기",short:"가슴",ex:[
+  X("m1","벤치프레스","탑 1세트 6~8 + 백오프 8~10","가슴",{note:"탑세트 8회 되면 다음엔 +5kg",t:204,r:[6,8],inc:5,rest:150}),
+  X("m2","인클라인 덤벨 프레스","프리웨이트","윗가슴",{t:262,rest:120}),
+  X("m3","체스트 플라이","","가슴",{rest:60}),
+  X("m4","딥스","","가슴·삼두",{rest:90}),
+  X("m5","머신 숄더 프레스","3세트","전면 어깨",{t:304,rest:90}),
+  X("m6","사이드 레터럴 레이즈","15~20회 × 4","측면 어깨",{t:318,r:[15,20],inc:1,rest:60}),
+  X("m7","오버헤드 익스텐션","3세트","삼두 장두",{t:340,rest:60}),
+  X("m8","케이블 푸시다운","3세트","삼두 외측두",{t:340,rest:60})]},
+ {id:"B",name:"광배 위주 당기기",short:"광배",ex:[
+  X("t1","하이로우","탑 2세트 8~10 (고중량)","광배",{t:358,r:[8,10],inc:5,rest:150,alts:["원암 랫풀다운","케이블 풀다운"]}),
+  X("t2","풀오버 머신","10~15회","광배",{t:393,r:[10,15],inc:5,rest:90,alts:["덤벨 풀오버","암풀다운"]}),
+  X("t3","랫풀다운","10~12회","광배",{t:427,r:[10,12],inc:5,rest:90,alts:["어시스트 풀업"]}),
+  X("t4","체스트 서포티드 티바로우","10~12회 × 3","등 상부",{t:440,r:[10,12],inc:5,rest:120}),
+  X("t5","다이스키","10~15회 × 3","측·후면 어깨",{t:467,r:[10,15],inc:1,rest:60}),
+  X("t6","리버스 펙덱 플라이","10~15회 × 3","후면 어깨",{t:467,r:[10,15],inc:2.5,rest:60}),
+  X("t7","해머컬","6~8회 × 3 (고중량)","이두 메인",{t:480,r:[6,8],inc:2,rest:90}),
+  X("t8","프리처컬","10~15회 × 3","이두",{t:490,r:[10,15],inc:2,rest:60})]},
+ {id:"C",name:"하체 & 복근",short:"하체",ex:[
+  X("w1","이너 타이","15~20회 × 3","웜업·가동성",{t:523,r:[15,20],inc:5,rest:60}),
+  X("w2","아웃 타이","15~20회 × 3","웜업·가동성",{t:523,r:[15,20],inc:5,rest:60}),
+  X("w3","불가리안 스플릿 스쿼트","8~10회 × 2","하체 메인",{t:548,r:[8,10],inc:2,rest:120}),
+  X("w4","핵스쿼트","8~12회 × 3","대퇴사두",{t:621,r:[8,12],inc:10,rest:150}),
+  X("w5","덤벨 스티프 레그 데드리프트","10~15회 × 3","햄스트링·후면",{t:628,r:[10,15],inc:2,rest:90}),
+  X("w6","레그 익스텐션","마무리","전면 하체",{t:670,rest:60}),
+  X("w7","크런치","15~20회 × 3","상복부",{t:683,r:[15,20],rest:45,alts:["케이블 크런치"]}),
+  X("w8","레그레이즈","15~20회 × 3","하복부",{t:683,r:[15,20],rest:45,alts:["행잉 레그레이즈"]}),
+  X("w9","사이드 크런치","양쪽 15회 × 3","옆구리",{t:683,rest:45})]},
+ {id:"D",name:"어깨 위주 밀기",short:"어깨",ex:[
+  X("f1","덤벨 숄더 프레스","탑 8~10 + 백오프 10~12","어깨",{t:735,r:[8,10],inc:2,rest:150}),
+  X("f2","스미스 비하인드 넥 프레스","10~15회 × 3","어깨",{t:764,r:[10,15],inc:5,rest:90}),
+  X("f3","사이드 레터럴 레이즈","4세트","측면 어깨",{t:776,rest:60}),
+  X("f4","플라이 머신","10~15회 × 3","가슴",{t:797,r:[10,15],inc:5,rest:90,alts:["머신 체스트 프레스"]}),
+  X("f5","딥스","10~15회 × 3","가슴·삼두",{t:802,r:[10,15],inc:2.5,rest:90}),
+  X("f6","라잉 트라이셉스 익스텐션","8~12회 × 3","삼두",{t:810,r:[8,12],inc:2.5,rest:90}),
+  X("f7","케이블 푸시다운","마무리","삼두 외측두",{t:820,rest:60})]},
+ {id:"E",name:"승모 위주 당기기",short:"승모",ex:[
+  X("s1","체스트 서포티드 티바로우","탑 2세트 8~10 + 트리플 드롭","등 두께 (메인)",{note:"마지막 세트는 트리플 드롭세트",t:840,r:[8,10],inc:5,rest:150}),
+  X("s2","투암 하이로우","10~15회 × 3","중하부 승모·원근",{t:883,r:[10,15],inc:5,rest:90}),
+  X("s3","로우로우","10~15회 × 3","중상부 승모",{t:915,r:[10,15],inc:5,rest:90,alts:["바벨로우","벤치 덤벨로우"]}),
+  X("s4","암풀다운","3세트","대원근",{t:935,rest:60}),
+  X("s5","롱풀","3세트","광배 하부",{t:943,rest:90}),
+  X("s6","페이스풀","3세트","후면 어깨",{t:952,rest:60,alts:["바벨 레이즈"]}),
+  X("s7","리버스 리어델트 플라이","3세트","후면 어깨",{t:957,rest:60}),
+  X("s8","덤벨컬","6~8회 × 3 (고중량)","이두 메인",{t:963,r:[6,8],inc:2,rest:90}),
+  X("s9","케이블 해머컬","3세트","이두",{t:972,rest:60})]}
+];
+// 목표 세트 수(sets)와 탑세트 수(top). 영상에 세트 수가 없는 종목은 3세트로 둡니다.
+const DEF_SETS={m1:2,m6:4,t1:2,w3:2,f1:2,f3:4,s1:3},DEF_TOP={m1:1,t1:2,f1:1,s1:2};
+SESS_DEFAULT.forEach(x=>x.ex.forEach(e=>{e.sets=DEF_SETS[e.id]||3;e.top=DEF_TOP[e.id]||0}));
+const DEFMAP={};SESS_DEFAULT.forEach(x=>x.ex.forEach(e=>DEFMAP[e.id]=e));
+const ORDER=["A","B","C","D","E"];
+let SESS=[],SMAP={},EX={},routineCustom=false;
+const fin=n=>typeof n==="number"&&isFinite(n);
+function deriveTop(t){const m=String(t||"").match(/탑\s*(\d)\s*세트/);return m?Math.min(3,Number(m[1])):/탑/.test(t||"")?1:0}
+function deriveSets(t,top){if(top)return top+1;const m=String(t||"").match(/[×x]\s*(\d+)/)||String(t||"").match(/(\d+)\s*세트/);const n=m?Number(m[1]):3;return n>=1&&n<=10?n:3}
+const okInt=(n,a,b)=>Number.isInteger(n)&&n>=a&&n<=b;
+function cleanEx(e){
+  if(!e||!e.id||!e.n)return null;
+  const d=DEFMAP[e.id];
+  const top=okInt(e.top,0,3)?e.top:d?d.top:deriveTop(e.tgt);
+  const sets=okInt(e.sets,1,10)?e.sets:d?d.sets:deriveSets(e.tgt,top);
+  const r=Array.isArray(e.r)&&e.r.length===2&&e.r.every(n=>fin(n)&&n>0)&&e.r[0]<=e.r[1]?[e.r[0],e.r[1]]:null;
+  return {id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,80),
+    t:fin(e.t)&&e.t>=0?Math.round(e.t):null,r,inc:fin(e.inc)&&e.inc>=0?e.inc:0,rest:fin(e.rest)&&e.rest>0?Math.round(e.rest):90,
+    alts:Array.isArray(e.alts)?e.alts.map(a=>String(a).trim().slice(0,40)).filter(Boolean).slice(0,6):[],sets,top,del:!!e.del};
+}
+function applyRoutine(r){
+  let src=SESS_DEFAULT;routineCustom=false;
+  if(r&&Array.isArray(r.sessions)&&r.sessions.length===5&&r.sessions.every((x,i)=>x&&x.id===ORDER[i]&&Array.isArray(x.ex))){src=r.sessions;routineCustom=true}
+  SESS=src.map((x,i)=>{const d=SESS_DEFAULT[i];const seen=new Set();
+    return {id:ORDER[i],name:String(x.name||d.name).slice(0,30),short:String(x.short||d.short).slice(0,4),
+      ex:x.ex.map(cleanEx).filter(e=>e&&!seen.has(e.id)&&seen.add(e.id))}});
+  SMAP={};EX={};SESS.forEach(x=>{SMAP[x.id]=x;x.c="--p-"+x.id;x.ex.forEach(e=>{e.s=x.id;EX[e.id]=e})});
+}
+function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts,sets:e.sets,top:e.top};if(e.del)o.del=true;return o})}))}}
+const activeEx=x=>x.ex.filter(e=>!e.del);
+applyRoutine(null);
+const PREFIX={m:"A",t:"B",w:"C",f:"D",s:"E"}; // 예전(요일 고정) 기록의 종목 id → 세션
+const DOW=["일","월","화","수","목","금","토"];
+const TAG={W:"웜업",T:"탑",D:"드롭"}, TAG_NEXT={"":"T",T:"D",D:"W",W:""};
+
+let docs={}, KEYS=[], backend=null, loaded=false;
+let tab="day", view=today(), changing=false;
+const open=new Set(), popen=new Set();
+let pendingRender=false;
+
+const $=id=>document.getElementById(id);
+const pad=n=>String(n).padStart(2,"0");
+function today(){const d=new Date();d.setHours(0,0,0,0);return d}
+const keyOf=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parseKey=k=>{const [y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d)};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const monday=d=>addDays(d,-((d.getDay()+6)%7));
+const diffDays=(a,b)=>Math.round((parseKey(b)-parseKey(a))/864e5);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mmss=s=>`${Math.floor(s/60)}:${pad(s%60)}`;
+const md=k=>`${Number(k.slice(5,7))}/${Number(k.slice(8))}`;
+const num=v=>(v===""||v==null||isNaN(Number(v)))?0:Number(v);
+const fmt=n=>Number.isInteger(n)?String(n):String(Math.round(n*100)/100);
+const agoText=n=>n===0?"오늘":n===1?"어제":`${n}일 전`;
+const fmtSet=t=>t.kg>0?`${fmt(t.kg)}kg × ${t.reps||"-"}`:`${t.reps||"-"}회`;
+
+function norm(b){
+  b=b&&typeof b==="object"?b:{};
+  const o={session:SMAP[b.session]?b.session:null,checks:{...(b.checks||{})},sets:JSON.parse(JSON.stringify(b.sets||{})),alts:{...(b.alts||{})},memo:typeof b.memo==="string"?b.memo:""};
+  if(!o.session){for(const id of [...Object.keys(o.checks),...Object.keys(o.sets)]){if(EX[id]&&PREFIX[id[0]]){o.session=PREFIX[id[0]];break}}}
+  return o;
+}
+const isEmpty=b=>!b.session&&!Object.keys(b.checks).length&&!Object.keys(b.sets).length&&!Object.keys(b.alts).length&&!b.memo;
+const body=k=>norm(docs[k]);
+const exName=(id,b)=>(b&&b.alts&&b.alts[id])||EX[id].n;
+function dataCount(b){let s=0;for(const l of Object.values(b.sets))s+=l.length;return {sets:s,checks:Object.keys(b.checks).length}}
+
+// ---------- 기록 분석 ----------
+function topSet(list){return list.reduce((a,s)=>{const kg=num(s.kg),r=num(s.reps);return (!a||kg>a.kg||(kg===a.kg&&r>a.reps))?{kg,reps:r}:a},null)}
+function buildIndex(){
+  const idx={};
+  for(const k of KEYS){
+    const b=docs[k];
+    for(const [id,list] of Object.entries(b.sets)){
+      if(!EX[id])continue;
+      const valid=list.filter(s=>s.tag!=="W"&&(num(s.kg)>0||num(s.reps)>0));
+      if(!valid.length)continue;
+      const name=exName(id,b);
+      (idx[name]||(idx[name]={sess:EX[id].s,entries:[]})).entries.push({k,sets:valid});
+    }
+  }
+  return idx;
+}
+function suggest(e,last){
+  if(!last)return null;
+  const t=topSet(last.sets);
+  if(e.r){
+    const [lo,hi]=e.r;
+    if(t.kg>0&&e.inc>0&&t.reps>=hi)return {kg:Math.round((t.kg+e.inc)*100)/100,reps:lo,up:true,why:`지난번 ${fmtSet(t)}회로 목표 상단(${hi}회) 달성 → +${fmt(e.inc)}kg`};
+    if(t.kg>0)return {kg:t.kg,reps:Math.min(Math.max(t.reps+1,lo),hi),why:`같은 무게로 ${hi}회까지 반복 수 늘리기`};
+    return {kg:0,reps:t.reps+1,why:"지난번보다 1회 더"};
+  }
+  return {kg:t.kg,reps:t.reps,why:"지난번 무게·횟수 이상으로"};
+}
+const e1rm=t=>t.kg>0&&t.reps>0?Math.round(t.kg*(1+t.reps/30)*2)/2:0;
+const setE1=x=>e1rm({kg:num(x.kg),reps:num(x.reps)});
+const stepOf=e=>e.inc>0?e.inc:2.5;
+const roundTo=(v,st)=>Math.max(st,Math.round(v/st)*st);
+const BACKOFF=0.875,DROP=0.8;
+// 완료 세트 수: 웜업 제외, 이어진 드롭세트 묶음은 직전 세트에 포함
+function doneCount(list){let n=0;for(const x of list||[]){if(x.tag==="W"||x.tag==="D"||!(num(x.reps)>0))continue;n++}return n}
+function prBase(nm,k,idx){const en=((idx[nm]||{}).entries||[]).filter(x=>x.k<k);let kg=0,e1=0;for(const x of en)for(const q of x.sets){kg=Math.max(kg,num(q.kg));e1=Math.max(e1,setE1(q))}return {has:en.length>0,kg,e1}}
+const isPR=(x,base)=>base.has&&x.tag!=="W"&&num(x.kg)>0&&num(x.reps)>0&&(num(x.kg)>base.kg||setE1(x)>base.e1);
+
+// ---------- 세션 순환 ----------
+function nextSession(k){for(let i=KEYS.length-1;i>=0;i--){const x=KEYS[i];if(x<k&&docs[x].session)return ORDER[(ORDER.indexOf(docs[x].session)+1)%ORDER.length]}return ORDER[0]}
+function lastDone(sid,k){for(let i=KEYS.length-1;i>=0;i--){const x=KEYS[i];if(x<k&&docs[x].session===sid)return x}return null}
+function streak(k){let d=addDays(parseKey(k),-1),n=0;while(docs[keyOf(d)]&&docs[keyOf(d)].session){n++;d=addDays(d,-1)}return n}
+function dayDone(k){const b=docs[k];if(!b||!b.session)return 0;const ex=activeEx(SMAP[b.session]);return ex.length?ex.filter(e=>b.checks[e.id]).length/ex.length:0}
+
+// ---------- 화면 ----------
+function render(){
+  const a=document.activeElement;
+  if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA")&&$("app").contains(a)){pendingRender=true;return}
+  pendingRender=false;
+  KEYS=Object.keys(docs).sort();
+  for(const t of ["day","prog","routine"])$("tab-"+t).setAttribute("aria-selected",tab===t);
+  $("weekbox").hidden=tab!=="day";
+  renderWeekSum();
+  if(!loaded){$("app").innerHTML=`<p class="loading">기록을 불러오는 중…</p>`;return}
+  if(tab==="day"){renderStrip();renderDay()}else if(tab==="prog")renderProgress();else renderRoutine();
+}
+function renderWeekSum(){
+  const tk=keyOf(today()),mon=keyOf(monday(today())),sun=keyOf(addDays(monday(today()),6));
+  const n=KEYS.filter(k=>k>=mon&&k<=sun&&k<=tk&&docs[k].session).length;
+  const nx=docs[tk]&&docs[tk].session?nextSession(keyOf(addDays(today(),1))):nextSession(tk);
+  $("weeksum").innerHTML=`<span>이번 주 <b class="mono">${n}/5</b> 세션</span><span>다음 차례 <b style="color:var(${SMAP[nx].c})">${SMAP[nx].name}</b></span>`;
+}
+function renderStrip(){
+  const mon=monday(view),sun=addDays(mon,6),tk=keyOf(today()),vk=keyOf(view);
+  $("range").textContent=`${mon.getMonth()+1}.${mon.getDate()} – ${sun.getMonth()+1}.${sun.getDate()}`;
+  let h="";
+  for(let i=0;i<7;i++){
+    const d=addDays(mon,i),k=keyOf(d),b=docs[k],s=b&&b.session?SMAP[b.session]:null,p=dayDone(k);
+    const lab=s?`<span class="sl">${s.short}</span>`:(k<tk?`<span class="sl rest">휴식</span>`:`<span class="sl rest">&nbsp;</span>`);
+    h+=`<button class="day${k===vk?" sel":""}${k===tk?" is-today":""}" style="--c:var(${s?s.c:"--p-rest"})" data-act="day" data-k="${k}" aria-label="${d.getMonth()+1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일 ${s?s.name+" "+Math.round(p*100)+"% 완료":"기록 없음"}">
+      <span class="dw">${DOW[d.getDay()]}</span><span class="dn">${d.getDate()}</span>${lab}
+      <span class="bar"><i style="width:${Math.round(p*100)}%"></i></span></button>`;
+  }
+  $("strip").innerHTML=h;
+}
+function dayLabel(d){return `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일`}
+
+function renderPicker(k,b){
+  const nx=nextSession(k),st=streak(k),cur=b.session;
+  const ago=sid=>{const x=lastDone(sid,k);return x?`마지막 ${agoText(diffDays(x,k))}`:"아직 기록 없음"};
+  let h=`<div class="dayhead" style="--c:var(--p-rest)"><span class="k">${dayLabel(view)}</span><h2>${changing?"다른 세션으로 바꾸기":"오늘은 무엇을 할까요?"}</h2></div>`;
+  if(st>=3)h+=`<div class="advice">${st}일 연속 운동했어요. 영상 루틴도 3일 운동 후 하루 쉬는 구성이라, 오늘은 쉬어도 좋아요.</div>`;
+  h+=`<button class="pick next${cur===nx?" cur":""}" style="--c:var(${SMAP[nx].c})" data-act="pick" data-s="${nx}"><span class="pk">다음 차례 추천</span><b>${SMAP[nx].name}</b><span class="pa">${ago(nx)} · ${activeEx(SMAP[nx]).length}종목</span></button>`;
+  h+=`<div class="sec"><h3>다른 세션 고르기</h3><div class="picks">`;
+  for(const s of SESS){if(s.id===nx)continue;h+=`<button class="pick${cur===s.id?" cur":""}" style="--c:var(${s.c})" data-act="pick" data-s="${s.id}"><b>${s.name}</b><span class="pa">${ago(s.id)}</span></button>`}
+  h+=`</div></div>`;
+  if(changing)h+=`<div class="rowbtns"><button class="ghost" data-act="unset">운동 안 함 (휴식)</button><button class="ghost" data-act="cancelchange">취소</button></div>`;
+  else h+=`<p class="hint">고르지 않은 날은 휴식으로 남아요. 일정이 꼬이면 아무 세션이나 골라도 다음 추천이 거기서부터 이어집니다.</p>`;
+  return h;
+}
+
+const lsGet=k=>{try{return Number(localStorage.getItem(k))||0}catch(e){return 0}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,String(v))}catch(e){}};
+function backupNag(){
+  if(!IS_PWA||!KEYS.length||keyOf(view)!==keyOf(today()))return "";
+  const now=Date.now(),last=lsGet("split3-lastbackup");if(lsGet("split3-snooze")>now)return "";
+  const since=last||parseKey(KEYS[0]).getTime();if(now-since<14*864e5)return "";
+  return `<div class="nag"><span>${last?`마지막 백업이 ${Math.floor((now-last)/864e5)}일 전이에요.`:"아직 백업한 적이 없어요."} 기록은 이 휴대폰에만 있어서 백업해 두는 게 안전해요.</span><button class="go" data-act="export">지금 백업</button><button data-act="snooze">3일 뒤에</button></div>`;
+}
+function renderDay(){
+  const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
+  if(!b.session||changing){app.innerHTML=nag+renderPicker(k,b);return}
+  const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s);
+  const shown=s.ex.filter(e=>!e.del||b.sets[e.id]||b.checks[e.id]);
+  const n=act.filter(e=>b.checks[e.id]).length;
+  let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div><div class="list">`;
+  if(!shown.length)h+=`<p class="hint">이 세션에 종목이 없어요. 아래에서 추가해 주세요.</p>`;
+  for(const e of shown){
+    const id=e.id,on=!!b.checks[id],my=b.sets[id]||[],nm=exName(id,b),isOpen=open.has(id);
+    const prev=((idx[nm]||{}).entries||[]).filter(x=>x.k<k),last=prev[prev.length-1],sg=suggest(e,last);
+    const meta=[e.tgt?`<span class="tg">${esc(e.tgt)}</span>`:"",esc(e.part)].filter(Boolean).join(" · ")+(sg&&sg.up&&!on?`<span class="upb">↑ 증량</span>`:"");
+    h+=`<div class="card${on?" done":""}"><div class="row">
+      <button class="chk" data-act="toggle" data-ex="${id}" aria-pressed="${on}" aria-label="${esc(nm)} 완료"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
+      <div class="info"><span class="name">${esc(nm)}${nm!==e.n?`<span class="orig">(${esc(e.n)} 대신)</span>`:""}${e.del?`<span class="orig">(루틴에서 삭제됨)</span>`:""}</span><span class="meta">${meta}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:""}</div>
+      <div class="side">${e.t!=null?`<a class="vid" href="${YT}&t=${e.t}" target="_blank" rel="noopener">▶ ${pad(Math.floor(e.t/60))}:${pad(e.t%60)}</a>`:""}
+        <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">${my.length?`세트 <span class="n">${doneCount(my)}/${e.sets}</span>`:`기록 · ${e.sets}세트`}</button></div></div>`;
+    if(isOpen){
+      const best=((idx[nm]||{}).entries||[]).reduce((m,x)=>Math.max(m,topSet(x.sets).kg),0);
+      const vol=my.filter(x=>x.tag!=="W").reduce((a,x)=>a+num(x.kg)*num(x.reps),0);
+      const base=prBase(nm,k,idx);
+      h+=`<div class="sets"><div class="hist">${last?`지난번 ${md(last.k)} · ${last.sets.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${e.sets}</b>세트</div>`;
+      if(last)h+=`<div class="lastsets">${last.sets.map((q,j)=>`<span><i>${q.tag?TAG[q.tag]:j+1}</i> <b>${fmtSet({kg:num(q.kg),reps:num(q.reps)})}</b></span>`).join("")}</div>`;
+      if(sg)h+=`<div class="goal${sg.up?" up":""}"><span>오늘 목표</span><b>${e.top?"탑 ":""}${fmtSet(sg)}</b><small>${esc(sg.why)}${e.top&&sg.kg>0?` · 백오프는 약 ${fmt(roundTo(sg.kg*BACKOFF,stepOf(e)))}kg`:""}</small></div>`;
+      let j=0;
+      my.forEach((x,i)=>{const g=x.tag==="W"?null:(last&&last.sets[j])||null;if(x.tag!=="W")j++;const pr=isPR(x,base);
+        h+=`<div class="set">
+        <button class="tag t-${x.tag||"N"}" data-act="tag" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 종류 바꾸기">${x.tag?TAG[x.tag]:i+1}</button>
+        <label class="field"><input id="kg-${k}-${id}-${i}" inputmode="decimal" enterkeyhint="next" data-act="kg" data-ex="${id}" data-i="${i}" value="${esc(x.kg)}" placeholder="${g&&num(g.kg)>0?esc(fmt(num(g.kg))):""}" aria-label="${i+1}세트 중량"><small>kg</small></label>
+        <span class="x">×</span>
+        <label class="field"><input id="rp-${k}-${id}-${i}" inputmode="numeric" enterkeyhint="done" data-act="reps" data-ex="${id}" data-i="${i}" value="${esc(x.reps)}" placeholder="${g&&num(g.reps)>0?esc(num(g.reps)):sg&&sg.reps?esc(sg.reps):""}" aria-label="${i+1}세트 횟수"><small>회</small></label>
+        ${pr?`<span class="prb" title="신기록">PR</span>`:"<span></span>"}
+        <button class="del" data-act="delset" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`});
+      h+=`<div class="acts"><button class="add" data-act="addset" data-ex="${id}">+ 세트 추가</button>${my.length?`<button class="drop" data-act="adddrop" data-ex="${id}">+ 드롭</button>`:""}<button class="tbtn" data-act="timer" data-ex="${id}">⏱ ${mmss(e.rest)}</button>${vol?`<span class="vol">볼륨 ${vol.toLocaleString()}kg</span>`:""}</div>`;
+      if(my.length)h+=`<div class="legend">${e.top?`탑세트 다음 세트는 백오프 무게(탑의 약 ${Math.round(BACKOFF*1000)/10}%)로, `:""}'+ 드롭'은 직전 세트의 약 ${DROP*100}% 무게로 채워져요. 무게는 미리 채워지고, 횟수는 한 만큼 입력하면 돼요(흐린 숫자는 지난번 같은 세트). 세트 번호를 누르면 탑 → 드롭 → 웜업으로 바뀌고, 웜업·드롭은 세트 수에서 빠져요.</div>`;
+      const opts=[e.n,...e.alts];if(!opts.includes(nm))opts.push(nm);
+      h+=`<div class="alt"><span>기구가 없으면 교체</span>${opts.map(v=>`<button class="chip${v===nm?" on":""}" data-act="setalt" data-ex="${id}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}
+        <span class="altc"><input id="alt-${k}-${id}" placeholder="다른 종목 직접 입력" enterkeyhint="done" aria-label="교체할 종목 이름"><button data-act="altcustom" data-ex="${id}">적용</button></span></div>
+        ${e.del?"":`<button class="lnk" style="justify-self:start" data-act="editex" data-ex="${id}">이 종목 수정·삭제 (루틴에 반영)</button>`}</div>`;
+    }
+    h+=`</div>`;
+  }
+  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 이 세션에 종목 추가</button><div class="memo"><label for="memo-${k}">메모</label><textarea id="memo-${k}" data-act="memo" placeholder="컨디션, 통증, 다음에 바꿀 점">${esc(b.memo)}</textarea></div>`;
+  app.innerHTML=nag+h;
+}
+
+function spark(vals,c){
+  if(!vals.length)return "";
+  const v=vals.slice(-12),mn=Math.min(...v),mx=Math.max(...v),W=72,H=24,p=3;
+  const xy=v.map((y,i)=>[v.length===1?W/2:p+(W-2*p)*i/(v.length-1),mx===mn?H/2:H-p-(H-2*p)*(y-mn)/(mx-mn)]);
+  const [ex,ey]=xy[xy.length-1];
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true">${v.length>1?`<polyline points="${xy.map(q=>q.map(n=>n.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="var(${c})" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity=".55"/>`:""}<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.6" fill="var(${c})"/></svg>`;
+}
+function renderProgress(){
+  const idx=buildIndex(),tk=keyOf(today()),from=keyOf(addDays(today(),-27));
+  const done=KEYS.filter(k=>k<=tk&&docs[k].session),d28=done.filter(k=>k>=from);
+  let h=`<div class="stats"><div class="stat"><b>${done.length}</b><span>총 운동</span></div><div class="stat"><b>${d28.length}</b><span>최근 4주</span></div><div class="stat"><b>${(d28.length/4).toFixed(1)}</b><span>주 평균 (목표 5)</span></div></div>`;
+  const prs=[];for(const [nm,o] of Object.entries(idx)){let bk=0,be=0;o.entries.forEach((x,i)=>{let tk2=0,te=0,tset=null,eset=null;for(const q of x.sets){if(num(q.kg)>tk2){tk2=num(q.kg);tset=q}if(setE1(q)>te){te=setE1(q);eset=q}}
+    if(i>0){if(tk2>bk)prs.push({k:x.k,nm,s:tset,kind:"최고 무게",c:SMAP[o.sess].c});else if(te>be)prs.push({k:x.k,nm,s:eset,kind:`추정 1RM ${fmt(te)}kg`,c:SMAP[o.sess].c})}bk=Math.max(bk,tk2);be=Math.max(be,te)})}
+  prs.sort((a,b)=>a.k<b.k?1:a.k>b.k?-1:0);
+  h+=`<div class="sec"><h3>최근 신기록</h3>${prs.length?`<div class="prlist">${prs.slice(0,8).map(x=>`<div class="prr"><span class="d">${md(x.k)}</span><span>${esc(x.nm)}<small>${x.kind}</small></span><span class="v">${fmtSet({kg:num(x.s.kg),reps:num(x.s.reps)})}</span></div>`).join("")}</div>`:`<p class="hint">같은 종목을 두 번 이상 기록하면, 지난번보다 무거운 무게나 더 높은 추정 1RM을 낸 세트가 여기 모여요.</p>`}</div>`;
+  const cnt=SESS.map(s=>d28.filter(k=>docs[k].session===s.id).length),mx=Math.max(4,...cnt);
+  h+=`<div class="sec"><h3>최근 4주 부위 균형</h3><div class="bal">`;
+  SESS.forEach((s,i)=>{const x=lastDone(s.id,keyOf(addDays(today(),1)));const g=x?diffDays(x,tk):null;
+    h+=`<div class="balr" style="--c:var(${s.c})"><span>${s.short} <small style="color:var(--muted)">${s.name.includes("밀기")?"밀기":s.name.includes("당기기")?"당기기":""}</small></span><span class="bt"><i style="width:${Math.round(cnt[i]/mx*100)}%"></i></span><span class="bn${g==null||g>=10?" stale":""}">${cnt[i]}회 · ${g==null?"기록 없음":agoText(g)}</span></div>`});
+  h+=`</div></div><div class="sec"><h3>종목별 기록</h3>`;
+  const seen=new Set();
+  for(const s of SESS){
+    const names=[];for(const e of s.ex){for(const v of [e.n,...e.alts])if(!seen.has(v)&&(v===e.n||idx[v])){seen.add(v);names.push(v)}}
+    for(const [nm,o] of Object.entries(idx))if(o.sess===s.id&&!seen.has(nm)){seen.add(nm);names.push(nm)}
+    const withData=names.filter(nm=>idx[nm]),none=names.length-withData.length;
+    h+=`<div class="pgroup" style="--c:var(${s.c})"><h4>${esc(s.name)}</h4>`;
+    if(!withData.length)h+=`<div class="pl" style="padding:9px 12px;font-size:12.5px;color:var(--muted)">아직 기록 없음</div>`;
+    for(const nm of withData){
+      const en=(idx[nm]||{}).entries||[],last=en[en.length-1],tops=en.map(x=>topSet(x.sets));
+      const best=tops.reduce((m,t)=>Math.max(m,t.kg),0),isOpen=popen.has(nm);
+      h+=`<button class="prow${en.length?"":" empty"}" data-act="prow" data-n="${esc(nm)}" aria-expanded="${isOpen}"${en.length?"":" disabled"}>
+        <span><span class="pn">${esc(nm)}</span><span class="pl">${last?`${md(last.k)} · ${fmtSet(topSet(last.sets))} · ${en.length}회 기록`:"기록 없음"}</span></span>
+        ${spark(tops.map(t=>t.kg>0?t.kg:t.reps),s.c)||"<span></span>"}<span class="pb">${best?fmt(best)+"kg":""}</span></button>`;
+      if(isOpen&&en.length){
+        h+=`<div class="pdet"><table><thead><tr><th>날짜</th><th>최고 세트</th><th>세트</th><th>볼륨</th><th>추정 1RM</th></tr></thead><tbody>`;
+        en.slice(-10).reverse().forEach(x=>{const t=topSet(x.sets),v=x.sets.reduce((a,q)=>a+num(q.kg)*num(q.reps),0);
+          h+=`<tr><td>${md(x.k)}</td><td class="mono">${fmtSet(t)}</td><td>${x.sets.length}</td><td class="mono">${v?v.toLocaleString():"-"}</td><td class="mono">${e1rm(t)?fmt(e1rm(t))+"kg":"-"}</td></tr>`});
+        h+=`</tbody></table></div>`;
+      }
+    }
+    if(withData.length&&none)h+=`<div style="padding:7px 12px;font-size:12px;color:var(--muted)">기록 없는 종목 ${none}개</div>`;
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  if(IS_PWA){const lb=lsGet("split3-lastbackup");h+=`<div class="sec"><h3>백업</h3><p class="hint">기록은 이 휴대폰 안에만 있어요. 마지막 백업: <b>${lb?`${md(keyOf(new Date(lb)))} (${agoText(Math.floor((Date.now()-lb)/864e5))})`:"아직 없음"}</b>. 2주가 지나면 운동 화면에서 알려 드려요.</p><div class="backup"><button data-act="export">기록 백업 파일 저장</button><label for="importFile">백업 파일 불러오기</label></div></div>`}
+  $("app").innerHTML=h;
+}
+
+// ---------- 루틴 편집 ----------
+let rsel="A",edState=null;
+function exMeta(e){return [`${e.sets}세트${e.top?` (탑 ${e.top})`:""}`,e.tgt,e.part,e.r?`목표 ${e.r[0]}~${e.r[1]}회${e.inc?` · +${fmt(e.inc)}kg`:""}`:"",`휴식 ${mmss(e.rest)}`].filter(Boolean).map(esc).join(" · ")}
+function renderRoutine(){
+  const s=SMAP[rsel],act=activeEx(s);
+  let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
+  h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
+  h+=`<div class="pgroup" style="--c:var(${s.c})">`;
+  if(!act.length)h+=`<p class="hint" style="padding:12px">종목이 없어요. 아래에서 추가해 주세요.</p>`;
+  act.forEach((e,i)=>{h+=`<div class="rrow"><div class="rmv"><button data-act="up" data-ex="${e.id}" aria-label="${esc(e.n)} 위로"${i?"":" disabled"}>↑</button><button data-act="down" data-ex="${e.id}" aria-label="${esc(e.n)} 아래로"${i<act.length-1?"":" disabled"}>↓</button></div>
+    <div class="info"><span class="name">${esc(e.n)}</span><span class="meta">${exMeta(e)}</span>${e.alts.length?`<span class="meta">대체: ${e.alts.map(esc).join(", ")}</span>`:""}</div>
+    <button class="ghost sm" data-act="editex" data-ex="${e.id}">편집</button></div>`});
+  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 종목 추가</button>`;
+  h+=`<p class="hint">바꾼 내용은 운동 화면에 바로 반영돼요. 종목을 지워도 그동안의 기록은 기록 탭에 남고, 이름을 바꾸면 지난 기록도 새 이름으로 이어져요.</p>`;
+  if(routineCustom)h+=`<button class="ghost" style="justify-self:start" data-act="resetroutine">영상 기본 루틴으로 되돌리기</button>`;
+  $("app").innerHTML=h;
+}
+function hasData(id){for(const k of KEYS){const b=docs[k];if(b.sets[id]||b.checks[id]||b.alts[id])return true}return false}
+async function saveRoutine(reset){
+  const r=reset?null:routineData();applyRoutine(r);render();
+  try{await backend.saveRoutine(r);syncQueueRoutine()}catch(e){setStatus("루틴을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.",true)}
+}
+function moveEx(id,dir){
+  const s=SMAP[EX[id].s],act=activeEx(s),i=act.findIndex(e=>e.id===id),j=i+dir;if(j<0||j>=act.length)return;
+  const a=s.ex.indexOf(act[i]),b=s.ex.indexOf(act[j]);[s.ex[a],s.ex[b]]=[s.ex[b],s.ex[a]];saveRoutine();
+}
+const REST_OPTS=[30,45,60,75,90,120,150,180,240];
+function fld(id,label,val,attrs,help){return `<label class="ef" for="${id}"><span>${label}</span><input id="${id}" value="${esc(val)}" ${attrs||""}>${help?`<small>${help}</small>`:""}</label>`}
+function openEditor(st){
+  edState=st;$("edErr").hidden=true;
+  let f="";
+  if(st.kind==="sess"){const s=SMAP[st.sid];$("edTitle").textContent="세션 이름 바꾸기";$("edDel").hidden=true;
+    f=fld("ed-sname","세션 이름",s.name,'maxlength="30" autocomplete="off"')+fld("ed-sshort","짧은 이름 (최대 4자)",s.short,'maxlength="4" autocomplete="off"',"주간 달력과 기록 탭에 표시돼요");
+  }else{
+    const e=st.id?EX[st.id]:{n:"",tgt:"",part:"",note:"",t:null,r:null,inc:0,rest:90,alts:[],sets:3,top:0};
+    $("edTitle").textContent=st.id?"종목 수정":`${SMAP[st.sid].name}에 종목 추가`;$("edDel").hidden=!st.id;
+    f=fld("ed-n","종목 이름 *",e.n,'maxlength="40" autocomplete="off" enterkeyhint="next"')
+     +fld("ed-tgt","목표 (화면 표시용)",e.tgt,'maxlength="40" placeholder="예: 10~12회 × 3" autocomplete="off"')
+     +fld("ed-part","타깃 부위",e.part,'maxlength="30" placeholder="예: 광배" autocomplete="off"')
+     +`<div class="efrow">${fld("ed-lo","반복 최소",e.r?e.r[0]:"",'inputmode="numeric" placeholder="예: 8"')}${fld("ed-hi","반복 최대",e.r?e.r[1]:"",'inputmode="numeric" placeholder="예: 12"')}${fld("ed-inc","증량 kg",e.inc||"",'inputmode="decimal" placeholder="예: 2.5"')}</div>`
+     +`<small style="font-size:11.5px;color:var(--muted);margin-top:-6px">반복 범위를 넣으면 '오늘 목표'를 계산해요. 최대 횟수에 닿으면 증량 kg만큼 올리라고 제안해요.</small>`
+     +`<div class="efrow" style="grid-template-columns:1fr 1fr">${fld("ed-sets","목표 세트 수",e.sets,'inputmode="numeric" placeholder="3"')}<label class="ef" for="ed-top"><span>탑세트 수</span><select id="ed-top">${[0,1,2,3].map(v=>`<option value="${v}"${v===e.top?" selected":""}>${v?v+"세트":"없음"}</option>`).join("")}</select></label></div>`
+     +`<small style="font-size:11.5px;color:var(--muted);margin-top:-6px">목표 세트를 채우면 자동으로 완료 체크돼요. 탑세트를 정하면 첫 세트가 탑으로 표시되고, 그다음 세트는 백오프 무게로 채워져요.</small>`
+     +`<label class="ef" for="ed-rest"><span>세트 사이 휴식</span><select id="ed-rest">${[...new Set([...REST_OPTS,e.rest])].sort((a,b)=>a-b).map(v=>`<option value="${v}"${v===e.rest?" selected":""}>${mmss(v)}</option>`).join("")}</select></label>`
+     +fld("ed-alts","대체 종목 (쉼표로 구분)",e.alts.join(", "),'maxlength="200" placeholder="예: 바벨로우, 덤벨로우" autocomplete="off"',"기구가 차 있을 때 바로 바꿀 수 있어요")
+     +fld("ed-note","메모",e.note,'maxlength="80" placeholder="예: 마지막 세트 드롭세트" autocomplete="off"')
+     +fld("ed-t","영상 위치 (분:초)",e.t!=null?`${pad(Math.floor(e.t/60))}:${pad(e.t%60)}`:"",'inputmode="numeric" placeholder="예: 07:20" maxlength="5"',"넣으면 카드에 ▶ 영상 링크가 생겨요");
+  }
+  $("edFields").innerHTML=f;$("editor").hidden=false;
+  requestAnimationFrame(()=>{const el=$("edFields").querySelector("input");el&&!st.id&&st.kind!=="sess"&&el.focus()});
+}
+function closeEditor(){edState=null;$("editor").hidden=true}
+function edErr(t){$("edErr").textContent=t;$("edErr").hidden=false}
+$("edCancel").addEventListener("click",closeEditor);
+$("editor").addEventListener("click",e=>{if(e.target===$("editor"))closeEditor()});
+$("edForm").addEventListener("submit",ev=>{
+  ev.preventDefault();if(!edState||!backend)return;const v=id=>($(id).value||"").trim();
+  if(edState.kind==="sess"){const n=v("ed-sname"),sh=v("ed-sshort");if(!n||!sh){edErr("세션 이름과 짧은 이름을 모두 입력해 주세요.");return}
+    const s=SMAP[edState.sid];s.name=n;s.short=sh;closeEditor();saveRoutine();toast("세션 이름을 바꿨어요");return}
+  const n=v("ed-n");if(!n){edErr("종목 이름을 입력해 주세요.");return}
+  const sid=edState.id?EX[edState.id].s:edState.sid;
+  if(activeEx(SMAP[sid]).some(e=>e.n===n&&e.id!==edState.id)){edErr("이 세션에 같은 이름의 종목이 이미 있어요.");return}
+  const lo=v("ed-lo"),hi=v("ed-hi");let r=null;
+  if(lo||hi){const a=Number(lo),b=Number(hi);if(!(a>0&&b>0&&Number.isInteger(a)&&Number.isInteger(b)&&a<=b)){edErr("반복 범위는 최소·최대를 둘 다 정수로, 최소 ≤ 최대가 되게 넣어 주세요.");return}r=[a,b]}
+  const incS=v("ed-inc").replace(",",".");const inc=incS===""?0:Number(incS);if(!(inc>=0)||inc>50){edErr("증량 kg은 0~50 사이 숫자로 넣어 주세요.");return}
+  const tS=v("ed-t");let t=null;if(tS){const m=tS.match(/^(\d{1,2}):?(\d{2})$/);if(!m||Number(m[2])>59){edErr("영상 위치는 07:20처럼 분:초로 넣어 주세요.");return}t=Number(m[1])*60+Number(m[2])}
+  const setsN=Number(v("ed-sets")||3);if(!okInt(setsN,1,10)){edErr("목표 세트 수는 1~10 사이 정수로 넣어 주세요.");return}
+  const fields={sets:setsN,top:Number($("ed-top").value)||0,n,tgt:v("ed-tgt"),part:v("ed-part"),note:v("ed-note"),r,inc,rest:Number($("ed-rest").value)||90,t,alts:v("ed-alts").split(/[,，]/).map(x=>x.trim()).filter(x=>x&&x!==n)};
+  if(edState.id){Object.assign(EX[edState.id],fields);toast("종목을 수정했어요")}
+  else{const id="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);SMAP[sid].ex.push({id,...fields});toast(`${n}을(를) 추가했어요`)}
+  closeEditor();saveRoutine();
+});
+$("edDel").addEventListener("click",()=>{
+  if(!edState||!edState.id)return;const id=edState.id,e=EX[id];
+  ask(`'${e.n}'을(를) 루틴에서 뺄까요? 지금까지 기록은 기록 탭에 남아요.`,"삭제",()=>{
+    const s=SMAP[e.s];if(hasData(id))e.del=true;else s.ex.splice(s.ex.indexOf(e),1);open.delete(id);closeEditor();saveRoutine();toast("루틴에서 뺐어요")});
+});
+function resetRoutine(){
+  ask("영상 기본 루틴으로 되돌릴까요? 직접 추가·수정한 내용이 사라져요. 지난 기록은 남아요.","되돌리기",()=>{
+    const keep=[];for(const s of SESS)for(const e of s.ex)if(!SESS_DEFAULT.some(d=>d.ex.some(x=>x.id===e.id))&&hasData(e.id))keep.push({...e,del:true});
+    if(!keep.length){saveRoutine(true);toast("기본 루틴으로 되돌렸어요");return}
+    applyRoutine(null);for(const e of keep)SMAP[e.s].ex.push(e);saveRoutine();toast("기본 루틴으로 되돌렸어요");
+  });
+}
+
+// ---------- 저장 ----------
+function setStatus(t,err){const s=$("status");s.textContent=t||"";s.className="status"+(err?" err":"")}
+let toastTimer;
+function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,2600)}
+let sheetCb=null;
+function ask(text,okLabel,cb){$("sheetText").textContent=text;$("sheetYes").textContent=okLabel;sheetCb=cb;$("sheet").hidden=false;$("sheetYes").focus()}
+$("sheetNo").addEventListener("click",()=>{sheetCb=null;$("sheet").hidden=true});
+$("sheet").addEventListener("click",e=>{if(e.target===$("sheet")){sheetCb=null;$("sheet").hidden=true}});
+$("sheetYes").addEventListener("click",()=>{const cb=sheetCb;sheetCb=null;$("sheet").hidden=true;cb&&cb()});
+
+async function persist(k,b,quiet){
+  if(isEmpty(b))delete docs[k];else docs[k]=b;
+  if(quiet)pendingRender=true;else render();
+  try{await backend.save(k,b);syncQueueDay(k,b);if(!IS_PWA&&backend.local)setStatus("이 브라우저에만 저장 중");else setStatus("")}
+  catch(e){setStatus(e&&e.code==="quota_exceeded"?"저장 공간이 가득 찼어요. 오래된 기록을 지워 주세요.":"저장하지 못했어요. 잠시 후 다시 입력해 주세요.",true)}
+}
+function localBackend(){
+  const KEY="split3-log";let raw={};
+  try{raw=JSON.parse(localStorage.getItem(KEY)||"{}")||{}}catch(e){raw={}}
+  docs={};for(const [k,v] of Object.entries(raw))if(/^\d{4}-\d{2}-\d{2}$/.test(k)){const b=norm(v);if(!isEmpty(b))docs[k]=b}
+  const write=()=>localStorage.setItem(KEY,JSON.stringify(docs)),RKEY="split3-routine";
+  try{applyRoutine(JSON.parse(localStorage.getItem(RKEY)||"null"))}catch(e){applyRoutine(null)}
+  return {local:true,async save(){write()},async saveAll(){write()},async saveRoutine(r){r?localStorage.setItem(RKEY,JSON.stringify(r)):localStorage.removeItem(RKEY)}};
+}
+
+
+// --------- Optional Wear OS cloud synchronization ---------
+// Credentials are only stored on this device. The server must use HTTPS.
+const syncConfKey="split3-wear-sync", syncPrefs=()=>{try{return JSON.parse(localStorage.getItem(syncConfKey)||"null")}catch(e){return null}};
+let syncConf=syncPrefs(), syncRev={}, syncBusy=false, syncPending={}, syncBooted=false, syncTimer=null, syncError="";
+function syncPanel(){
+  const box=$("watchSync");if(!box)return;
+  box.innerHTML=`<div style="background:var(--surface);border:1px solid var(--line);padding:14px;border-radius:12px;display:grid;gap:8px">
+    <strong>갤럭시 워치 동기화 ${syncConf?"· 연결 설정됨":"· 설정 필요"}</strong>
+    <span style="color:var(--muted)">${syncError?esc(syncError):syncConf?"기록은 이 휴대폰에 저장되며 서버와 주기적으로 동기화됩니다.":"HTTPS 동기화 서버 주소와 비밀 토큰을 등록하세요."}</span>
+    <input id="syncUrl" placeholder="https://your-server.example.com" style="font:inherit;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)" value="${esc(syncConf?.url||'')}">
+    <input id="syncToken" type="password" placeholder="동기화 토큰" style="font:inherit;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)" value="${esc(syncConf?.token||'')}">
+    <div style="display:flex;gap:8px"><button id="syncConnect" class="ghost">연결 / 새로고침</button><button id="syncDisconnect" class="ghost">연결 해제</button></div>
+    <small>주의: 처음 연결할 때 서버에 기록이 있으면 기존 휴대폰 데이터를 덮어쓰기 전에 확인합니다. 먼저 JSON 백업을 보관하세요.</small>
+  </div>`;
+  $("syncConnect").onclick=async()=>{
+    const url=$("syncUrl").value.trim().replace(/\/$/,""),token=$("syncToken").value.trim();
+    if(!/^https:\/\/[^\s]+$/.test(url)||token.length<24){syncError="HTTPS 주소와 24자 이상의 토큰이 필요합니다.";syncPanel();return}
+    syncConf={url,token};localStorage.setItem(syncConfKey,JSON.stringify(syncConf));syncBooted=false;syncRev={};syncPending={};syncError="";await syncStart(true);
+  };
+  $("syncDisconnect").onclick=()=>{syncConf=null;localStorage.removeItem(syncConfKey);syncBooted=false;syncPending={};syncError="연결을 해제했습니다. 휴대폰 기록은 보존됩니다.";syncPanel()};
+}
+async function syncReq(path,method,body){
+  if(!syncConf)throw Error('No sync configuration');
+  const res=await fetch(syncConf.url+path,{method:method||"GET",headers:{"Authorization":"Bearer "+syncConf.token,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});
+  if(!res.ok)throw Error('동기화 서버 오류 ('+res.status+')');return res.json();
+}
+function syncQueueDay(k,b){if(!syncConf)return;syncPending[k]=structuredClone(b);syncFlush()}
+function syncQueueRoutine(){if(!syncConf)return;syncPending.routine=routineCustom?routineData():{};syncFlush()}
+async function syncFlush(){
+  if(syncBusy||!syncBooted||!syncConf||!Object.keys(syncPending).length)return;
+  syncBusy=true;
+  try{
+    for(const k of Object.keys(syncPending)){
+      const data=syncPending[k];const ep=k==='routine'?'/api/routine':'/api/day/'+k;
+      try{
+        const out=await syncReq(ep,'PUT',{data,revision:syncRev[k]||0});syncRev[k]=out.revision;
+        if(syncPending[k]===data)delete syncPending[k];
+      }catch(e){if(String(e).includes('409')){syncError='동일 날짜가 다른 기기에서 변경됐습니다. 충돌을 확인하세요.';}throw e}
+    }
+    syncError='';
+  }catch(e){syncError=e.message;}
+  finally{syncBusy=false;syncPanel()}
+}
+async function syncPoll(){
+  if(!syncConf||!syncBooted||syncBusy||Object.keys(syncPending).length)return;
+  try{
+    const state=await syncReq('/api/state');
+    let changed=false;
+    for(const [k,remote] of Object.entries(state.days||{})){
+      const nextRev=state.revisions[k]||0;
+      if(nextRev!==(syncRev[k]||0)){
+        docs[k]=norm(remote);syncRev[k]=nextRev;changed=true;
+      }
+    }
+    if((state.revisions.routine||0)!==(syncRev.routine||0)){
+      if(state.routine && Object.keys(state.routine).length){applyRoutine(state.routine);await backend.saveRoutine(state.routine)}
+      syncRev.routine=state.revisions.routine||0;changed=true;
+    }
+    if(changed){await backend.saveAll();render()}
+    syncError='';
+  }catch(e){syncError=e.message;}
+  syncPanel();
+}
+async function syncStart(force=false){
+  syncPanel();if(syncTimer)clearInterval(syncTimer);syncTimer=setInterval(()=>{syncFlush().then(syncPoll)},5000);
+  if(!syncConf)return;
+  try{
+    const state=await syncReq('/api/state');
+    const remoteCount=Object.keys(state.days||{}).length;
+    const localCount=Object.keys(docs).length;
+    if(remoteCount&&localCount&&!syncBooted){
+      // Guard against overwriting local records when pairing a pre-existing remote account.
+      const remoteKeys=Object.keys(state.days);
+      const diff=remoteKeys.some(k=>JSON.stringify(docs[k])!==JSON.stringify(norm(state.days[k])));
+      if(diff&&!confirm('서버에 기존 기록이 있습니다. 서버의 기록으로 휴대폰 기록을 교체할까요? 먼저 JSON 백업을 권장합니다.')){
+        syncError='기록 보호를 위해 연결을 보류했습니다. 백업 후 다시 시도하세요.';
+        syncConf=null;localStorage.removeItem(syncConfKey);syncPanel();return;
+      }
+    }
+    if(remoteCount){
+      docs={};for(const [k,b] of Object.entries(state.days))docs[k]=norm(b);
+      if(state.routine && Object.keys(state.routine).length){applyRoutine(state.routine);await backend.saveRoutine(state.routine)}
+      await backend.saveAll();syncRev={...state.revisions};render();
+    }else{
+      syncRev={...state.revisions};
+      for(const [k,b] of Object.entries(docs))syncPending[k]=structuredClone(b);
+      syncPending.routine=routineCustom?routineData():{};
+    }
+    syncBooted=true;syncError='';await syncFlush();syncPanel();
+  }catch(e){syncError=e.message;syncPanel()}
+}
+
+// ---------- 휴식 타이머 ----------
+let timer=null,actx=null,wl=null;
+function ensureAudio(){try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;if(!actx)actx=new AC();if(actx.state==="suspended")actx.resume()}catch(e){}}
+document.addEventListener("pointerdown",ensureAudio,{passive:true});
+function beep(){try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+  if(!actx)return;try{const t=actx.currentTime;[0,.28,.56].forEach(o=>{const os=actx.createOscillator(),g=actx.createGain();os.frequency.value=880;g.gain.setValueAtTime(.0001,t+o);g.gain.exponentialRampToValueAtTime(.35,t+o+.02);g.gain.exponentialRampToValueAtTime(.0001,t+o+.2);os.connect(g);g.connect(actx.destination);os.start(t+o);os.stop(t+o+.22)})}catch(e){}}
+async function wake(on){try{if(on&&!wl&&navigator.wakeLock){wl=await navigator.wakeLock.request("screen");wl.addEventListener&&wl.addEventListener("release",()=>{wl=null})}else if(!on&&wl){await wl.release();wl=null}}catch(e){wl=null}}
+function saveTimer(){try{timer?localStorage.setItem("split3-timer",JSON.stringify(timer)):localStorage.removeItem("split3-timer")}catch(e){}}
+function startTimer(sec,name){ensureAudio();timer={end:Date.now()+sec*1000,total:sec,name,done:false};saveTimer();wake(true);tick()}
+function stopTimer(){timer=null;saveTimer();wake(false);tick()}
+function tick(){
+  const bar=$("tbar");
+  if(!timer){bar.hidden=true;bar.classList.remove("done");document.body.classList.remove("timing");return}
+  bar.hidden=false;document.body.classList.add("timing");
+  const left=Math.ceil((timer.end-Date.now())/1000);
+  if(left<=0){
+    if(!timer.done){timer.done=true;saveTimer();beep();wake(false);const t0=timer;setTimeout(()=>{if(timer===t0)stopTimer()},15000)}
+    bar.classList.add("done");$("tlabel").textContent="휴식 끝";$("ttime").textContent="다음 세트!";$("tprog").style.width="100%";
+  }else{
+    bar.classList.remove("done");$("tlabel").textContent=timer.name+" · 휴식";$("ttime").textContent=mmss(left);
+    $("tprog").style.width=`${Math.max(0,Math.min(100,100-left/timer.total*100))}%`;
+  }
+}
+setInterval(()=>{if(timer)tick()},250);
+function restoreTimer(){try{const t=JSON.parse(localStorage.getItem("split3-timer")||"null");if(t&&t.end>Date.now()-15000){timer=t;tick()}}catch(e){}}
+
+// 목표 세트 수를 채우는 순간 완료 체크 (직접 해제하면 다시 체크하지 않음)
+function autoCheck(b,id,before){const e=EX[id],after=doneCount(b.sets[id]);if(e&&before<e.sets&&after>=e.sets&&!b.checks[id]){b.checks[id]=true;return true}return false}
+
+// ---------- 입력 ----------
+document.addEventListener("click",ev=>{
+  const t=ev.target.closest("[data-act]");if(!t||t.tagName==="INPUT"||t.tagName==="TEXTAREA")return;
+  const act=t.dataset.act,id=t.dataset.ex,k=keyOf(view);
+  if(act==="tab"){tab=t.dataset.t;changing=false;render();window.scrollTo(0,0);return}
+  if(act==="prev"||act==="next"){view=addDays(view,act==="prev"?-7:7);open.clear();changing=false;render();return}
+  if(act==="today"){view=today();open.clear();changing=false;render();return}
+  if(act==="day"){view=parseKey(t.dataset.k);open.clear();changing=false;render();return}
+  if(act==="expand"){open.has(id)?open.delete(id):open.add(id);render();return}
+  if(act==="prow"){const n=t.dataset.n;popen.has(n)?popen.delete(n):popen.add(n);render();return}
+  if(act==="tminus"&&timer){if(timer.done)return;timer.end-=15000;saveTimer();tick();return}
+  if(act==="tplus"&&timer){if(timer.done){timer.done=false;timer.end=Date.now()+15000;timer.total=15;wake(true)}else{timer.end+=15000;timer.total+=15}saveTimer();tick();return}
+  if(act==="tstop"){stopTimer();return}
+  if(act==="timer"){const b=body(k);startTimer(EX[id].rest,exName(id,b));return}
+  if(act==="export"){exportBackup();return}
+  if(act==="snooze"){lsSet("split3-snooze",Date.now()+3*864e5);render();return}
+  if(act==="rsel"){rsel=t.dataset.s;render();return}
+  if(act==="editsess"){openEditor({kind:"sess",sid:rsel});return}
+  if(act==="editex"){openEditor({kind:"ex",id});return}
+  if(act==="newex"){openEditor({kind:"ex",sid:t.dataset.s||rsel});return}
+  if(act==="up"||act==="down"){if(backend)moveEx(id,act==="up"?-1:1);return}
+  if(act==="resetroutine"){if(backend)resetRoutine();return}
+  if(act==="change"){changing=true;render();window.scrollTo(0,0);return}
+  if(act==="cancelchange"){changing=false;render();return}
+  if(!backend)return;
+  const b=body(k);
+  if(act==="pick"){
+    const sid=t.dataset.s;
+    if(b.session===sid){changing=false;render();return}
+    const c=dataCount(b);
+    const apply=()=>{const nb=norm(null);nb.memo=b.memo;nb.session=sid;changing=false;open.clear();persist(k,nb)};
+    if(b.session&&(c.sets||c.checks))ask(`${SMAP[b.session].name}에 기록한 ${c.sets}세트와 완료 체크 ${c.checks}개가 지워져요. ${SMAP[sid].name}(으)로 바꿀까요?`,"바꾸기",apply);else apply();
+    return;
+  }
+  if(act==="unset"){
+    const c=dataCount(b),apply=()=>{const nb=norm(null);nb.memo=b.memo;changing=false;open.clear();persist(k,nb)};
+    if(c.sets||c.checks)ask(`이 날 기록한 ${c.sets}세트와 완료 체크 ${c.checks}개가 지워져요. 휴식으로 바꿀까요?`,"휴식으로",apply);else apply();
+    return;
+  }
+  if(act==="toggle"){if(b.checks[id])delete b.checks[id];else b.checks[id]=true;persist(k,b);return}
+  if(act==="addset"||act==="adddrop"){
+    const e=EX[id],list=b.sets[id]||(b.sets[id]=[]),nm=exName(id,b),st=stepOf(e);
+    const p=list[list.length-1],tops=list.filter(x=>x.tag==="T").length;
+    const fromSuggest=()=>{const en=((buildIndex()[nm]||{}).entries||[]).filter(x=>x.k<k),l=en[en.length-1],sg=suggest(e,l);if(sg)return {kg:sg.kg>0?sg.kg:"",reps:sg.reps||""};return {kg:"",reps:""}};
+    let row;
+    if(act==="adddrop"){if(!p)return;row={kg:num(p.kg)>0?roundTo(num(p.kg)*DROP,st):p.kg,reps:p.reps,tag:"D"}}
+    else if(!p){row=fromSuggest();if(e.top)row.tag="T"}
+    else if(p.tag==="W"){row=e.top&&!tops?{...fromSuggest(),tag:"T"}:{kg:p.kg,reps:p.reps}}
+    else if(p.tag==="T"&&tops<e.top){row={kg:p.kg,reps:p.reps,tag:"T"}}
+    else if(p.tag==="T"){row={kg:num(p.kg)>0?roundTo(num(p.kg)*BACKOFF,st):p.kg,reps:num(p.reps)>0?num(p.reps)+2:p.reps}}
+    else if(p.tag==="D"){const q=[...list].reverse().find(x=>x.tag!=="D"&&x.tag!=="W")||p;row={kg:q.kg,reps:q.reps}}
+    else row={kg:p.kg,reps:p.reps};
+    row.reps="";  // 횟수는 실제로 한 만큼 직접 입력 (입력하는 순간 세트 완료·타이머·신기록 판정)
+    list.push(row);persist(k,b);
+    requestAnimationFrame(()=>{const el=$(`kg-${k}-${id}-${list.length-1}`);if(el){el.focus();el.select&&el.select()}});
+    return;
+  }
+  if(act==="delset"){const list=b.sets[id]||[];list.splice(Number(t.dataset.i),1);if(!list.length)delete b.sets[id];persist(k,b);return}
+  if(act==="tag"){const list=b.sets[id]||[],i=Number(t.dataset.i),s=list[i];if(!s)return;const before=doneCount(list);const nt=TAG_NEXT[s.tag||""];if(nt)s.tag=nt;else delete s.tag;
+    const pv=list[i-1];if(s.tag==="D"&&pv&&num(pv.kg)>0&&num(s.kg)===num(pv.kg))s.kg=roundTo(num(pv.kg)*DROP,stepOf(EX[id]));
+    if(autoCheck(b,id,before))toast(`${exName(id,b)} ${EX[id].sets}세트 완료`);persist(k,b);return}
+  if(act==="setalt"){const v=t.dataset.v;if(v===EX[id].n)delete b.alts[id];else b.alts[id]=v;persist(k,b);return}
+  if(act==="altcustom"){const v=($(`alt-${k}-${id}`).value||"").trim().slice(0,40);if(!v){toast("교체할 종목 이름을 입력해 주세요");return}
+    document.activeElement&&document.activeElement.blur&&document.activeElement.blur();b.alts[id]=v;persist(k,b);return}
+});
+document.addEventListener("change",ev=>{
+  const t=ev.target;if(!backend||!t.dataset)return;
+  const k=keyOf(view);
+  if(t.dataset.act==="memo"){const b=body(k),v=t.value.slice(0,2000);if(b.memo===v)return;b.memo=v;if(!b.session&&!v)return;persist(k,b,true);return}
+  if(t.dataset.act!=="kg"&&t.dataset.act!=="reps")return;
+  const b=body(k),id=t.dataset.ex,list=b.sets[id]||[],s=list[Number(t.dataset.i)];if(!s)return;
+  const v=t.value.trim().replace(",",".");const n=v===""?"":Number(v);
+  if(v!==""&&(!isFinite(n)||n<0)){t.value=s[t.dataset.act]??"";return}
+  if(s[t.dataset.act]===n)return;
+  const nm=exName(id,b),base=prBase(nm,k,buildIndex()),wasPR=isPR(s,base),before=doneCount(list);
+  s[t.dataset.act]=n;
+  const nowPR=isPR(s,base),done=autoCheck(b,id,before);
+  persist(k,b,true);
+  if(nowPR&&!wasPR)toast(`신기록! ${nm} ${fmtSet({kg:num(s.kg),reps:num(s.reps)})}${done?` · ${EX[id].sets}세트 완료`:""}`);
+  else if(done)toast(`${nm} ${EX[id].sets}세트 완료`);
+  if(t.dataset.act==="reps"&&n>0&&s.tag!=="W")startTimer(EX[id].rest,nm);
+});
+document.addEventListener("keydown",ev=>{
+  const t=ev.target;if(ev.key!=="Enter"||!t.id)return;
+  if(t.id.startsWith("alt-")){ev.preventDefault();const btn=t.parentElement.querySelector("[data-act='altcustom']");btn&&btn.click()}
+});
+document.addEventListener("focusout",()=>setTimeout(()=>{if(pendingRender)render()},200));
+
+// ---------- 백업 (웹앱 전용) ----------
+async function exportBackup(){
+  const data=JSON.stringify({app:"split3-log",version:3,exportedAt:new Date().toISOString(),days:docs,routine:routineCustom?routineData():null});
+  const name=`운동일지-백업-${keyOf(today())}.json`,file=new File([data],name,{type:"application/json"});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});lsSet("split3-lastbackup",Date.now());toast("백업 파일을 저장했어요");render();return}}
+  catch(e){if(e&&e.name==="AbortError")return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);lsSet("split3-lastbackup",Date.now());toast("백업 파일을 저장했어요");render();
+}
+$("importFile").addEventListener("change",async ev=>{
+  const f=ev.target.files&&ev.target.files[0];ev.target.value="";if(!f||!backend||!backend.saveAll)return;
+  try{
+    const j=JSON.parse(await f.text()),days=j&&j.days;
+    if(!days||typeof days!=="object"||Array.isArray(days))throw 0;
+    const m={};for(const [k,v] of Object.entries(days))if(/^\d{4}-\d{2}-\d{2}$/.test(k)){const b=norm(v);if(!isEmpty(b))m[k]=b}
+    ask(`백업에 ${Object.keys(m).length}일치 기록이 있어요. 지금 기록을 이 백업으로 바꿀까요?`,"덮어쓰기",async()=>{
+      docs=m;try{if("routine" in j){applyRoutine(j.routine);await backend.saveRoutine(routineCustom?routineData():null)}await backend.saveAll();toast("백업을 불러왔어요")}catch(e){setStatus("저장하지 못했어요. 휴대폰 저장 공간을 확인해 주세요.",true)}render()});
+  }catch(e){toast("운동일지 백업 파일이 아니에요. 이 앱에서 저장한 .json 파일을 골라 주세요.")}
+});
+
+// 앱을 다시 열었을 때 날짜가 바뀌었으면 오늘로 이동
+let lastToday=keyOf(today());
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState!=="visible")return;const t=keyOf(today());if(t!==lastToday&&keyOf(view)===lastToday)view=today();lastToday=t;if(timer){tick();if(!timer.done)wake(true)}render()});
+
+async function start(){
+  render();restoreTimer();
+  if(IS_PWA){backend=localBackend();loaded=true;try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}render();
+    if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});syncStart();return}
+  let db=null,uid=null;
+  try{const c=window.claude;if(c&&c.use){const [d,u]=await Promise.all([c.use("db"),c.use("user")]);db=d;uid=u?await u.id():null}}catch(e){db=null}
+  if(db&&uid){
+    const col=db.collection("data/users/"+uid),chains={};
+    const q=(k,fn)=>(chains[k]=(chains[k]||Promise.resolve()).catch(()=>{}).then(fn));
+    backend={save(k,b){return q(k,()=>isEmpty(b)?col.doc(k).delete():col.doc(k).set(b))},saveRoutine(r){return q("routine",()=>r?col.doc("routine").set(r):col.doc("routine").delete())}};
+    col.onSnapshot(snap=>{const m={};let rt=null;snap.docs.forEach(d=>{if(!d.exists)return;if(d.id==="routine"){rt=d.data();return}if(/^\d{4}-\d{2}-\d{2}$/.test(d.id)){const b=norm(d.data());if(!isEmpty(b))m[d.id]=b}});
+      applyRoutine(rt);docs=m;loaded=true;render()},
+      ()=>setStatus("기록 동기화가 끊겼어요. 페이지를 새로 열어 주세요.",true));
+  }else{backend=localBackend();loaded=true;setStatus("이 브라우저에만 저장 중");render()}
+}
+start();
+</script>
+</body>
+</html>
