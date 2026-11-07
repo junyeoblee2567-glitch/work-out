@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>운동일지 · 워치 연동 v0.5.18</title>
+<title>운동일지 · 워치 연동 v0.5.20</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="운동일지">
@@ -250,6 +250,25 @@ footer a{color:var(--muted)}
 .library-items button{border:1px solid var(--line);border-radius:10px;padding:11px;text-align:left;background:var(--bg);color:var(--ink);font:inherit}
 .library-items small{display:block;font-size:11px;margin-top:3px;color:var(--muted)}
 .library-cancel{margin-top:12px;padding:11px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+
+/* v0.5.20: editable, exercise-by-exercise routine cards */
+.routine-cards{display:grid;gap:12px}
+.routine-card{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px;display:grid;gap:10px;min-width:0}
+.routine-card .routine-card-header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.routine-card .routine-card-title{flex:1;min-width:0;font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis}
+.routine-card .routine-card-toolbar{display:flex;gap:4px;flex-shrink:0}
+.routine-card .routine-card-toolbar button{border:1px solid var(--line);border-radius:8px;font-size:12px;padding:6px 9px}
+.routine-card .routine-plan-note{font-size:11px;color:var(--muted)}
+.routine-plan-labels,.routine-plan-row{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 27px;gap:5px;align-items:center}
+.routine-plan-labels{font-size:10px;color:var(--muted);text-align:center}
+.routine-plan-row .plan-index{font-size:12px;font-weight:700;color:var(--muted);text-align:center}
+.routine-plan-row input,.routine-plan-row select{width:100%;min-width:0;padding:8px 3px;text-align:center;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-size:13px}
+.routine-plan-row .plan-remove{height:34px;border-radius:8px;background:var(--bg);color:var(--muted);font-size:18px}
+.routine-card-actions{display:flex;gap:6px;flex-wrap:wrap}
+.routine-card-actions button{font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:var(--surface)}
+.routine-card-actions .plan-save{background:var(--accent);border-color:var(--accent);color:#fff}
+.routine-card-actions .plan-delete{color:#d4535d;border-color:rgba(212,83,93,.35)}
+.routine-card .plan-badge{color:var(--accent);font-size:11px;font-weight:600}
 </style>
 </head>
 <body>
@@ -386,7 +405,12 @@ function cleanEx(e){
   const top=okInt(e.top,0,3)?e.top:d?d.top:deriveTop(e.tgt);
   const sets=okInt(e.sets,1,10)?e.sets:d?d.sets:deriveSets(e.tgt,top);
   const r=Array.isArray(e.r)&&e.r.length===2&&e.r.every(n=>fin(n)&&n>0)&&e.r[0]<=e.r[1]?[e.r[0],e.r[1]]:null;
-  return {id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,80),
+  const plan=Array.isArray(e.plan)?e.plan.slice(0,30).filter(v=>v&&typeof v==="object").map(v=>({
+    kg:Number.isFinite(Number(v.kg))?Math.max(0,Math.min(500,Number(v.kg))):0,
+    reps:Number.isInteger(Number(v.reps))?Math.max(0,Math.min(100,Number(v.reps))):0,
+    tag:["","W","T","B","D"].includes(v.tag)?v.tag:""
+  })):null;
+  return {plan,id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,80),
     t:fin(e.t)&&e.t>=0?Math.round(e.t):null,r,inc:fin(e.inc)&&e.inc>=0?e.inc:0,rest:fin(e.rest)&&e.rest>0?Math.round(e.rest):90,
     alts:Array.isArray(e.alts)?e.alts.map(a=>String(a).trim().slice(0,40)).filter(Boolean).slice(0,6):[],sets,top,del:!!e.del};
 }
@@ -398,7 +422,7 @@ function applyRoutine(r){
       ex:x.ex.map(cleanEx).filter(e=>e&&!seen.has(e.id)&&seen.add(e.id))}});
   SMAP={};EX={};SESS.forEach(x=>{SMAP[x.id]=x;x.c="--p-"+x.id;x.ex.forEach(e=>{e.s=x.id;EX[e.id]=e})});
 }
-function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts,sets:e.sets,top:e.top};if(e.del)o.del=true;return o})}))}}
+function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts,sets:e.sets,top:e.top};if(e.del)o.del=true;if(Array.isArray(e.plan))o.plan=e.plan;return o})}))}}
 const activeEx=x=>x.ex.filter(e=>!e.del);
 applyRoutine(null);
 const PREFIX={m:"A",t:"B",w:"C",f:"D",s:"E"}; // 예전(요일 고정) 기록의 종목 id → 세션
@@ -542,6 +566,8 @@ function previousExerciseSet(snapshot,id,index){
 // Most recent performance of this specific exercise within its own routine.
 // Derived at render time: never overwrites today's recorded sets or historical data.
 function latestExercisePlan(sid,id,k){
+  const custom=EX[id]&&EX[id].plan;
+  if(Array.isArray(custom)&&custom.length)return {date:"직접 설정",manual:true,rows:custom.map(x=>({...x}))};
   const snapshot=previousSessionSnapshot(sid,k);
   const rows=snapshot&&snapshot.sets&&snapshot.sets[id];
   if(!Array.isArray(rows)||!rows.length)return null;
@@ -553,7 +579,7 @@ function latestExercisePlan(sid,id,k){
 // Show the full previous session's set count, not a static 3-set default.
 function exerciseGoal(e,k){
   const plan=latestExercisePlan(e.s,e.id,k);
-  return plan?Math.max(1,doneCount(plan.rows)):e.sets;
+  return plan?(plan.manual?plan.rows.length:Math.max(1,doneCount(plan.rows))):e.sets;
 }
 function planRowLabel(row){
   const tag=row.tag?`${TAG[row.tag]||row.tag} · `:"";
@@ -599,7 +625,7 @@ function renderDay(){
       h+=`<div class="sets"><div class="hist">${previousInRoutine?`같은 루틴 최근 ${md(sessionSnapshot.date)} · ${previousInRoutine.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${target}</b>세트</div>`;
       
       if(plan){
-        h+=`<div class="goal" style="display:block"><span>최근 ${md(plan.date)} 기록을 이번 루틴 구성으로 자동 적용 · 전체 ${plan.rows.length}세트 (완료 기준 ${target}세트)</span><div class="lastsets" style="margin-top:6px">`;
+        h+=`<div class="goal" style="display:block"><span>${plan.manual?"루틴에서 직접 설정한 계획":`최근 ${md(plan.date)} 기록 자동 적용`} · 전체 ${plan.rows.length}세트 (완료 기준 ${target}세트)</span><div class="lastsets" style="margin-top:6px">`;
         plan.rows.forEach((row,i)=>{
           h+=`<span style="display:inline-flex;align-items:center;gap:5px"><b>${i+1}. ${esc(planRowLabel(row))}</b>${i>=my.length?`<button class="ghost sm" data-act="loadplanned" data-ex="${id}" data-i="${i}" title="이 세트를 입력란에 불러오기">입력</button>`:""}</span>`;
         });
@@ -683,24 +709,86 @@ function renderProgress(){
 // ---------- 루틴 편집 ----------
 let rsel="A",edState=null;
 function exMeta(e){return [`${e.sets}세트${e.top?` (탑 ${e.top})`:""}`,e.tgt,e.part,e.r?`목표 ${e.r[0]}~${e.r[1]}회${e.inc?` · +${fmt(e.inc)}kg`:""}`:"",`휴식 ${mmss(e.rest)}`].filter(Boolean).map(esc).join(" · ")}
+function routinePlanRows(ex){
+  const explicit=Array.isArray(ex.plan)&&ex.plan.length?ex.plan:null;
+  if(explicit)return explicit.map(x=>({...x}));
+  const recent=latestExercisePlan(ex.s,ex.id,keyOf(today()));
+  if(recent&&recent.rows.length)return recent.rows.map(x=>({...x}));
+  return Array.from({length:ex.sets},(_,i)=>({kg:0,reps:ex.r?ex.r[0]:0,tag:i<ex.top?"T":ex.top?"B":""}));
+}
+function routinePlanRowHTML(id,row,i){
+  const sel=[['','일반'],['W','웜업'],['T','탑'],['B','백오프'],['D','드롭']]
+    .map(([v,label])=>`<option value="${v}"${(row.tag||'')===v?' selected':''}>${label}</option>`).join('');
+  return `<div class="routine-plan-row" data-plan-index="${i}">
+    <span class="plan-index">${i+1}</span>
+    <select data-plan-field="tag" aria-label="${i+1}세트 유형">${sel}</select>
+    <input type="number" inputmode="decimal" min="0" max="500" step="0.5" data-plan-field="kg" aria-label="${i+1}세트 중량" value="${esc(row.kg)}">
+    <input type="number" inputmode="numeric" min="0" max="100" step="1" data-plan-field="reps" aria-label="${i+1}세트 반복" value="${esc(row.reps)}">
+    <button class="plan-remove" type="button" data-act="planremove" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제">×</button>
+  </div>`;
+}
 function renderRoutine(){
   const s=SMAP[rsel],act=activeEx(s);
   let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
   h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
-  h+=`<div class="pgroup" style="--c:var(${s.c})">`;
-  if(!act.length)h+=`<p class="hint" style="padding:12px">종목이 없어요. 아래에서 추가해 주세요.</p>`;
-  act.forEach((e,i)=>{
-    const plan=latestExercisePlan(s.id,e.id,keyOf(today()));
-    const goal=exerciseGoal(e,keyOf(today()));
-    const summary=plan?`<span class="meta">최근 ${md(plan.date)} · 자동 계획 전체 ${plan.rows.length}세트 (완료 기준 ${goal}세트)</span><span class="meta">${plan.rows.map((r,j)=>`${j+1}세트 ${esc(planRowLabel(r))}`).join(" / ")}</span>`:`<span class="meta">기본 ${e.sets}세트 · 이전 수행 기록 없음</span>`;
-    h+=`<div class="rrow"><div class="rmv"><button data-act="up" data-ex="${e.id}" aria-label="${esc(e.n)} 위로"${i?"":" disabled"}>↑</button><button data-act="down" data-ex="${e.id}" aria-label="${esc(e.n)} 아래로"${i<act.length-1?"":" disabled"}>↓</button></div>
-    <div class="info"><span class="name">${esc(e.n)}</span>${summary}<span class="meta">${exMeta(e)}</span>${e.alts.length?`<span class="meta">대체: ${e.alts.map(esc).join(", ")}</span>`:""}</div>
-    <button class="ghost sm" data-act="editex" data-ex="${e.id}">편집</button></div>`});
-  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 종목 추가</button>`;
-  h+=`<p class="hint">최근 같은 루틴에서 수행한 세트 수·중량·횟수·유형을 자동 계획으로 보여줍니다. 예정값은 수행 완료 기록으로 저장하지 않습니다. 목표 세트 수를 고정하려면 각 종목의 편집에서 변경하세요.</p><p class="hint">바꾼 내용은 운동 화면에 바로 반영돼요. 종목을 지워도 그동안의 기록은 기록 탭에 남고, 이름을 바꾸면 지난 기록도 새 이름으로 이어져요.</p>`;
+  h+=`<p class="hint">종목별로 세트 유형·중량·횟수를 바로 수정하세요. <b>저장</b>하면 다음 운동의 기본 계획에 적용됩니다. 지난 운동 기록은 변경되지 않습니다.</p>`;
+  h+=`<div class="routine-cards">`;
+  if(!act.length)h+=`<p class="hint">종목이 없습니다. 아래의 종목 추가를 이용하세요.</p>`;
+  for(let i=0;i<act.length;i++){
+    const e=act[i],rows=routinePlanRows(e);
+    const manually=Array.isArray(e.plan)&&e.plan.length;
+    const recent=!manually?latestExercisePlan(s.id,e.id,keyOf(today())):null;
+    h+=`<section class="routine-card" data-plan-ex="${e.id}">
+      <div class="routine-card-header"><div class="routine-card-title">${i+1}. ${esc(e.n)}</div>
+        <div class="routine-card-toolbar"><button data-act="up" data-ex="${e.id}" ${i===0?'disabled':''} aria-label="위로">↑</button><button data-act="down" data-ex="${e.id}" ${i===act.length-1?'disabled':''} aria-label="아래로">↓</button></div></div>
+      <div class="routine-plan-note">${manually?'직접 설정한 기본 구성':recent?'최근 운동 기록에서 불러온 구성':'기본 구성'} · ${rows.length}세트</div>
+      <div class="routine-plan-labels"><span>세트</span><span>유형</span><span>중량 kg</span><span>횟수</span><span></span></div>
+      <div class="routine-plan-rows">${rows.map((r,j)=>routinePlanRowHTML(e.id,r,j)).join('')}</div>
+      <div class="routine-card-actions"><button data-act="planadd" data-ex="${e.id}">＋ 세트 추가</button><button class="plan-save" data-act="plansave" data-ex="${e.id}">구성 저장</button><button data-act="editex" data-ex="${e.id}">종목 설정</button><button class="plan-delete" data-act="removeex" data-ex="${e.id}">종목 삭제</button></div>
+      </section>`;
+  }
+  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">＋ 새 운동종목</button>`;
+  h+=`<button class="addex" data-act="libraryadd" data-s="${s.id}">＋ 전체 운동에서 추가</button>`;
   if(routineCustom)h+=`<button class="ghost" style="justify-self:start" data-act="resetroutine">영상 기본 루틴으로 되돌리기</button>`;
   $("app").innerHTML=h;
 }
+function collectRoutineCard(id){
+  const card=[...document.querySelectorAll('.routine-card')].find(el=>el.dataset.planEx===id);
+  if(!card)return null;
+  const rows=[...card.querySelectorAll('.routine-plan-row')];
+  if(!rows.length){toast('최소 1세트가 필요합니다');return null}
+  const plan=[];
+  for(const row of rows){
+    const get=key=>row.querySelector(`[data-plan-field="${key}"]`).value;
+    const kg=Number(get('kg')), reps=Number(get('reps')),tag=get('tag');
+    if(!Number.isFinite(kg)||kg<0||kg>500||!Number.isInteger(reps)||reps<0||reps>100){
+      toast('중량은 0~500kg, 횟수는 0~100 정수로 입력하세요');return null;
+    }
+    plan.push({kg,reps,tag});
+  }
+  return plan;
+}
+async function savePlanCard(id){
+  const ex=EX[id],plan=collectRoutineCard(id);
+  if(!ex||!plan)return;
+  const prior=ex.plan,priorSets=ex.sets,priorTop=ex.top;
+  ex.plan=plan;ex.sets=Math.min(10,plan.length);ex.top=plan.filter(x=>x.tag==='T').length;
+  const ok=await saveRoutine();
+  if(ok)toast(`${ex.n} 기본 구성 저장 완료`);
+  else {ex.plan=prior;ex.sets=priorSets;ex.top=priorTop;render();toast('저장 실패. 다시 시도하세요')}
+}
+function changePlanRows(id,removeIndex){
+  const card=document.querySelector(`.routine-card[data-plan-ex="${id}"]`);
+  if(!card)return;
+  const rows=collectRoutineCard(id);
+  if(!rows)return;
+  if(removeIndex===null){if(rows.length>=30){toast('최대 30세트까지 추가할 수 있습니다');return}
+    const last=rows[rows.length-1];rows.push(last?{...last}:{kg:0,reps:0,tag:''});
+  }else{if(rows.length<=1){toast('최소 1세트는 유지해야 합니다');return}rows.splice(removeIndex,1)}
+  card.querySelector('.routine-plan-rows').innerHTML=rows.map((r,i)=>routinePlanRowHTML(id,r,i)).join('');
+  card.querySelector('.routine-plan-note').textContent=`편집 중 · ${rows.length}세트 (구성 저장을 눌러 적용)`;
+}
+
 function hasData(id){for(const k of KEYS){const b=docs[k];if(b.sets[id]||b.checks[id]||b.alts[id])return true}return false}
 async function saveRoutine(reset){
   const r=reset?null:routineData();
@@ -792,7 +880,7 @@ function displayExerciseLibrary(){
 function openExerciseLibrary(mode,sid,replaceId){
   libraryIntent={mode,sid,replaceId};
   $("libraryTitle").textContent=mode==="replace"?"전체 운동에서 종목 변경":"전체 운동에서 종목 추가";
-  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. 현재 버전: 0.5.19";
+  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. 현재 버전: 0.5.20";
   $("librarySearch").value="";$("exerciseLibrary").hidden=false;
   displayExerciseLibrary();$("librarySearch").focus();
 }
@@ -842,8 +930,12 @@ function chooseLibraryExercise(choiceKey){
 }
 function removeRoutineExercise(id){
   const ex=EX[id];if(!ex)return;
-  ask(`'${ex.n}'을(를) 루틴에서 제외할까요? 이전 기록과 현재 날짜의 기존 세트는 삭제하지 않습니다.`,"루틴에서 삭제",()=>{
-    ex.del=true;open.delete(id);saveRoutine();toast("루틴에서 종목을 제외했습니다");
+  ask(`'${ex.n}'을(를) 루틴에서 제외할까요? 이전 기록과 현재 날짜의 기존 세트는 삭제하지 않습니다.`,"루틴에서 삭제",async()=>{
+    const before=routineData();
+    ex.del=true;open.delete(id);
+    const saved=await saveRoutine();
+    if(saved)toast("루틴에서 종목을 제외했습니다");
+    else {applyRoutine(before);render();toast("종목 삭제에 실패했습니다. 다시 시도하세요")}
   });
 }
 function discardSelectedDay(){
@@ -912,7 +1004,8 @@ $("edForm").addEventListener("submit",ev=>{
 $("edDel").addEventListener("click",()=>{
   if(!edState||!edState.id)return;const id=edState.id,e=EX[id];
   ask(`'${e.n}'을(를) 루틴에서 뺄까요? 지금까지 기록은 기록 탭에 남아요.`,"삭제",()=>{
-    const s=SMAP[e.s];if(hasData(id))e.del=true;else s.ex.splice(s.ex.indexOf(e),1);open.delete(id);closeEditor();saveRoutine();toast("루틴에서 뺐어요")});
+    const before=routineData();e.del=true;open.delete(id);closeEditor();
+    saveRoutine().then(ok=>{if(ok)toast("루틴에서 종목을 제외했습니다");else{applyRoutine(before);render();toast("종목 삭제 실패")}})});
 });
 function resetRoutine(){
   ask("영상 기본 루틴으로 되돌릴까요? 직접 추가·수정한 내용이 사라져요. 지난 기록은 남아요.","되돌리기",()=>{
@@ -1085,6 +1178,9 @@ document.addEventListener("click",ev=>{
   if(act==="timer"){const b=body(k);startTimer(EX[id].rest,exName(id,b));return}
   if(act==="export"){exportBackup();return}
   if(act==="snooze"){lsSet("split3-snooze",Date.now()+3*864e5);render();return}
+  if(act==="planadd"){changePlanRows(id,null);return}
+  if(act==="planremove"){changePlanRows(id,Number(t.dataset.i));return}
+  if(act==="plansave"){if(backend)savePlanCard(id);return}
   if(act==="rsel"){rsel=t.dataset.s;render();return}
   if(act==="editsess"){openEditor({kind:"sess",sid:rsel});return}
   if(act==="editex"){openEditor({kind:"ex",id});return}
