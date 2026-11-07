@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>운동일지 · 워치 연동</title>
+<title>운동일지 · 워치 연동 v0.5.18</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="운동일지">
@@ -539,6 +539,26 @@ function previousExerciseSet(snapshot,id,index){
   const sets=snapshot.sets[id];
   return Array.isArray(sets)?sets[index]||null:null;
 }
+// Most recent performance of this specific exercise within its own routine.
+// Derived at render time: never overwrites today's recorded sets or historical data.
+function latestExercisePlan(sid,id,k){
+  const snapshot=previousSessionSnapshot(sid,k);
+  const rows=snapshot&&snapshot.sets&&snapshot.sets[id];
+  if(!Array.isArray(rows)||!rows.length)return null;
+  // Only completed sets are used as the next-session template.
+  const completed=rows.filter(x=>x&&Number(x.reps)>0&&Number.isFinite(Number(x.kg)));
+  if(!completed.length)return null;
+  return {date:snapshot.date,rows:completed.map(x=>({kg:Number(x.kg)||0,reps:Number(x.reps),tag:x.tag||""}))};
+}
+// Show the full previous session's set count, not a static 3-set default.
+function exerciseGoal(e,k){
+  const plan=latestExercisePlan(e.s,e.id,k);
+  return plan?Math.max(1,doneCount(plan.rows)):e.sets;
+}
+function planRowLabel(row){
+  const tag=row.tag?`${TAG[row.tag]||row.tag} · `:"";
+  return `${tag}${fmt(Number(row.kg)||0)}kg × ${Number(row.reps)||0}회`;
+}
 const lsGet=k=>{try{return Number(localStorage.getItem(k))||0}catch(e){return 0}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,String(v))}catch(e){}};
 function backupNag(){
@@ -551,7 +571,9 @@ function renderDay(){
   const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
   if(!b.session||changing){app.innerHTML=nag+renderPicker(k,b);return}
   const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s),sessionSnapshot=previousSessionSnapshot(b.session,k);
-  const shown=s.ex.filter(e=>!e.del||b.sets[e.id]||b.checks[e.id]);
+  // Show active routine items first, in their current order. Historical records
+  // for removed items are available below, separately marked as archived.
+  const shown=[...act,...s.ex.filter(e=>e.del&&(b.sets[e.id]||b.checks[e.id]))];
   const n=act.filter(e=>b.checks[e.id]).length;
   let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div>
   <div class="workout-tools">
@@ -562,19 +584,27 @@ function renderDay(){
   if(!shown.length)h+=`<p class="hint">이 세션에 종목이 없어요. 아래에서 추가해 주세요.</p>`;
   for(const e of shown){
     const id=e.id,on=!!b.checks[id],my=b.sets[id]||[],nm=exName(id,b),isOpen=open.has(id);
+    const plan=latestExercisePlan(s.id,id,k),target=exerciseGoal(e,k);
     const previousInRoutine=sessionSnapshot&&sessionSnapshot.sets[id],last=previousInRoutine?{k:sessionSnapshot.date,sets:previousInRoutine}:null,sg=suggest(e,last);
     const meta=[e.tgt?`<span class="tg">${esc(e.tgt)}</span>`:"",esc(e.part)].filter(Boolean).join(" · ")+(sg&&sg.up&&!on?`<span class="upb">↑ 증량</span>`:"");
     h+=`<div class="card${on?" done":""}"><div class="row">
       <button class="chk" data-act="toggle" data-ex="${id}" aria-pressed="${on}" aria-label="${esc(nm)} 완료"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
-      <div class="info"><span class="name">${esc(nm)}${nm!==e.n?`<span class="orig">(${esc(e.n)} 대신)</span>`:""}${e.del?`<span class="orig">(루틴에서 삭제됨)</span>`:""}</span><span class="meta">${meta}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:""}</div>
+      <div class="info"><span class="name">${esc(nm)}${nm!==e.n?`<span class="orig">(${esc(e.n)} 대신)</span>`:""}${e.del?`<span class="orig">(기존 기록 보관 · 현재 루틴 제외)</span>`:""}</span><span class="meta">${meta}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:""}</div>
       <div class="side">${e.t!=null?`<a class="vid" href="${YT}&t=${e.t}" target="_blank" rel="noopener">▶ ${pad(Math.floor(e.t/60))}:${pad(e.t%60)}</a>`:""}
-        <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">${my.length?`세트 <span class="n">${doneCount(my)}/${e.sets}</span>`:`기록 · ${e.sets}세트`}</button></div></div>`;
+        <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">${my.length?`세트 <span class="n">${doneCount(my)}/${target}</span>`:`예정 · ${plan?plan.rows.length:target}세트`}</button></div></div>`;
     if(isOpen){
       const best=((idx[nm]||{}).entries||[]).reduce((m,x)=>Math.max(m,topSet(x.sets).kg),0);
       const vol=my.filter(x=>x.tag!=="W").reduce((a,x)=>a+num(x.kg)*num(x.reps),0);
       const base=prBase(nm,k,idx);
-      h+=`<div class="sets"><div class="hist">${previousInRoutine?`같은 루틴 최근 ${md(sessionSnapshot.date)} · ${previousInRoutine.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${e.sets}</b>세트</div>`;
+      h+=`<div class="sets"><div class="hist">${previousInRoutine?`같은 루틴 최근 ${md(sessionSnapshot.date)} · ${previousInRoutine.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${target}</b>세트</div>`;
       
+      if(plan){
+        h+=`<div class="goal" style="display:block"><span>최근 ${md(plan.date)} 기록을 이번 루틴 구성으로 자동 적용 · 전체 ${plan.rows.length}세트 (완료 기준 ${target}세트)</span><div class="lastsets" style="margin-top:6px">`;
+        plan.rows.forEach((row,i)=>{
+          h+=`<span style="display:inline-flex;align-items:center;gap:5px"><b>${i+1}. ${esc(planRowLabel(row))}</b>${i>=my.length?`<button class="ghost sm" data-act="loadplanned" data-ex="${id}" data-i="${i}" title="이 세트를 입력란에 불러오기">입력</button>`:""}</span>`;
+        });
+        h+=`</div><small>예정값입니다. 위 기록은 실제 수행 완료로 처리되지 않습니다. '입력'을 눌러 중량과 유형을 가져온 후 실제 반복 횟수를 기록하세요.</small></div>`;
+      }
       if(sg)h+=`<div class="goal${sg.up?" up":""}"><span>오늘 목표</span><b>${e.top?"탑 ":""}${fmtSet(sg)}</b><small>${esc(sg.why)}${e.top&&sg.kg>0?` · 백오프는 약 ${fmt(roundTo(sg.kg*BACKOFF,stepOf(e)))}kg`:""}</small></div>`;
       let j=0;
       my.forEach((x,i)=>{const g=previousExerciseSet(sessionSnapshot,id,i);const pr=isPR(x,base);
@@ -659,18 +689,31 @@ function renderRoutine(){
   h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
   h+=`<div class="pgroup" style="--c:var(${s.c})">`;
   if(!act.length)h+=`<p class="hint" style="padding:12px">종목이 없어요. 아래에서 추가해 주세요.</p>`;
-  act.forEach((e,i)=>{h+=`<div class="rrow"><div class="rmv"><button data-act="up" data-ex="${e.id}" aria-label="${esc(e.n)} 위로"${i?"":" disabled"}>↑</button><button data-act="down" data-ex="${e.id}" aria-label="${esc(e.n)} 아래로"${i<act.length-1?"":" disabled"}>↓</button></div>
-    <div class="info"><span class="name">${esc(e.n)}</span><span class="meta">${exMeta(e)}</span>${e.alts.length?`<span class="meta">대체: ${e.alts.map(esc).join(", ")}</span>`:""}</div>
+  act.forEach((e,i)=>{
+    const plan=latestExercisePlan(s.id,e.id,keyOf(today()));
+    const goal=exerciseGoal(e,keyOf(today()));
+    const summary=plan?`<span class="meta">최근 ${md(plan.date)} · 자동 계획 전체 ${plan.rows.length}세트 (완료 기준 ${goal}세트)</span><span class="meta">${plan.rows.map((r,j)=>`${j+1}세트 ${esc(planRowLabel(r))}`).join(" / ")}</span>`:`<span class="meta">기본 ${e.sets}세트 · 이전 수행 기록 없음</span>`;
+    h+=`<div class="rrow"><div class="rmv"><button data-act="up" data-ex="${e.id}" aria-label="${esc(e.n)} 위로"${i?"":" disabled"}>↑</button><button data-act="down" data-ex="${e.id}" aria-label="${esc(e.n)} 아래로"${i<act.length-1?"":" disabled"}>↓</button></div>
+    <div class="info"><span class="name">${esc(e.n)}</span>${summary}<span class="meta">${exMeta(e)}</span>${e.alts.length?`<span class="meta">대체: ${e.alts.map(esc).join(", ")}</span>`:""}</div>
     <button class="ghost sm" data-act="editex" data-ex="${e.id}">편집</button></div>`});
   h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 종목 추가</button>`;
-  h+=`<p class="hint">바꾼 내용은 운동 화면에 바로 반영돼요. 종목을 지워도 그동안의 기록은 기록 탭에 남고, 이름을 바꾸면 지난 기록도 새 이름으로 이어져요.</p>`;
+  h+=`<p class="hint">최근 같은 루틴에서 수행한 세트 수·중량·횟수·유형을 자동 계획으로 보여줍니다. 예정값은 수행 완료 기록으로 저장하지 않습니다. 목표 세트 수를 고정하려면 각 종목의 편집에서 변경하세요.</p><p class="hint">바꾼 내용은 운동 화면에 바로 반영돼요. 종목을 지워도 그동안의 기록은 기록 탭에 남고, 이름을 바꾸면 지난 기록도 새 이름으로 이어져요.</p>`;
   if(routineCustom)h+=`<button class="ghost" style="justify-self:start" data-act="resetroutine">영상 기본 루틴으로 되돌리기</button>`;
   $("app").innerHTML=h;
 }
 function hasData(id){for(const k of KEYS){const b=docs[k];if(b.sets[id]||b.checks[id]||b.alts[id])return true}return false}
 async function saveRoutine(reset){
-  const r=reset?null:routineData();applyRoutine(r);render();
-  try{await backend.saveRoutine(r);syncQueueRoutine()}catch(e){setStatus("루틴을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.",true)}
+  const r=reset?null:routineData();
+  try{
+    await backend.saveRoutine(r);
+    applyRoutine(r);
+    render();
+    syncQueueRoutine();
+    return true;
+  }catch(e){
+    setStatus("루틴 저장에 실패했습니다. 저장 공간과 연결 상태를 확인하세요.",true);
+    return false;
+  }
 }
 // ----- 운동 화면에서도 접근 가능한 전체 종목 관리 -----
 let libraryIntent=null;
@@ -749,7 +792,7 @@ function displayExerciseLibrary(){
 function openExerciseLibrary(mode,sid,replaceId){
   libraryIntent={mode,sid,replaceId};
   $("libraryTitle").textContent=mode==="replace"?"전체 운동에서 종목 변경":"전체 운동에서 종목 추가";
-  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. 선택하면 현재 루틴으로 복사합니다.";
+  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. 현재 버전: 0.5.19";
   $("librarySearch").value="";$("exerciseLibrary").hidden=false;
   displayExerciseLibrary();$("librarySearch").focus();
 }
@@ -757,27 +800,44 @@ function chooseLibraryExercise(choiceKey){
   const intent=libraryIntent,source=libraryChoices.get(choiceKey);
   if(!intent||!source)return;
   const dest=SMAP[intent.sid];if(!dest)return;
+  const old=intent.mode==="replace"?dest.ex.find(x=>x.id===intent.replaceId):null;
+  if(intent.mode==="replace"&&!old){
+    toast("교체할 원래 운동을 찾지 못했습니다. 다시 시도하세요.");return;
+  }
   if(activeEx(dest).some(x=>librarySearchKey(x.n)===librarySearchKey(source.n)&&x.id!==intent.replaceId)){
     toast("이 루틴에 같은 이름의 종목이 이미 있습니다.");return;
   }
-  const apply=()=>{
+  const apply=async()=>{
+    const before=routineData();
     const clone=JSON.parse(JSON.stringify(source));
     clone.id=newRoutineExerciseId();clone.del=false;
     delete clone.s;
-    const old=dest.ex.find(x=>x.id===intent.replaceId);
-    if(intent.mode==="replace"&&old){
-      const pos=dest.ex.indexOf(old);old.del=true;
+    const prior=dest.ex.find(x=>x.id===intent.replaceId);
+    if(intent.mode==="replace"&&prior){
+      const pos=dest.ex.indexOf(prior);
+      prior.del=true;
       dest.ex.splice(pos+1,0,clone);
-      open.delete(old.id);
+      open.delete(prior.id);
     }else dest.ex.push(clone);
     closeExerciseLibrary();
-    if(document.activeElement && typeof document.activeElement.blur==="function")document.activeElement.blur();
+    if(document.activeElement&&typeof document.activeElement.blur==="function")document.activeElement.blur();
     open.add(clone.id);
-    saveRoutine();
-    toast(intent.mode==="replace"?"루틴의 운동종목을 교체했습니다":"운동종목을 루틴에 추가했습니다");
+    const saved=await saveRoutine();
+    if(!saved){
+      applyRoutine(before);render();
+      toast("운동 변경을 저장하지 못했습니다. 다시 시도하세요.");
+      return;
+    }
+    // Display the resulting routine in day view. Keep old historical sets intact.
+    if(tab!=="day")tab="day";
+    changing=false;
+    render();
+    toast(intent.mode==="replace"
+      ?"종목 변경 완료: "+clone.n+" (기존 기록 보존)"
+      :"종목 추가 완료: "+clone.n);
   };
   if(intent.mode==="replace"){
-    ask("이 운동으로 교체하면 기존 종목은 루틴에서 숨겨집니다. 기존 기록은 보존되며 새 운동은 새로운 기록으로 시작합니다. 계속할까요?","종목 변경",apply);
+    ask("기존 종목은 현재 루틴에서 제외되고, 이미 저장된 기록은 보관됩니다. '"+source.n+"'으로 변경할까요?","종목 변경",apply);
   }else apply();
 }
 function removeRoutineExercise(id){
@@ -1007,7 +1067,7 @@ setInterval(()=>{if(timer)tick()},250);
 function restoreTimer(){try{const t=JSON.parse(localStorage.getItem("split3-timer")||"null");if(t&&t.end>Date.now()-15000){timer=t;tick()}}catch(e){}}
 
 // 목표 세트 수를 채우는 순간 완료 체크 (직접 해제하면 다시 체크하지 않음)
-function autoCheck(b,id,before){const e=EX[id],after=doneCount(b.sets[id]);if(e&&before<e.sets&&after>=e.sets&&!b.checks[id]){b.checks[id]=true;return true}return false}
+function autoCheck(b,id,before){const e=EX[id],after=doneCount(b.sets[id]),goal=e?exerciseGoal(e,keyOf(view)):0;if(e&&before<goal&&after>=goal&&!b.checks[id]){b.checks[id]=true;return true}return false}
 
 // ---------- 입력 ----------
 document.addEventListener("click",ev=>{
@@ -1054,6 +1114,18 @@ document.addEventListener("click",ev=>{
     return;
   }
   if(act==="toggle"){if(b.checks[id])delete b.checks[id];else b.checks[id]=true;persist(k,b);return}
+  if(act==="loadplanned"){
+    const e=EX[id],plan=e&&latestExercisePlan(e.s,id,k),index=Number(t.dataset.i);
+    if(!plan||!Number.isInteger(index)||index<0||index>=plan.rows.length)return;
+    const list=b.sets[id]||(b.sets[id]=[]);
+    // Work sequentially so the draft list cannot silently skip earlier sets.
+    if(index!==list.length){toast("앞의 미입력 세트부터 순서대로 불러와 주세요");return}
+    const prior=plan.rows[index];
+    list.push({kg:prior.kg,reps:"",tag:prior.tag});
+    open.add(id);persist(k,b);
+    requestAnimationFrame(()=>{const el=$(`rp-${k}-${id}-${index}`);if(el)el.focus()});
+    return;
+  }
   if(act==="addset"||act==="adddrop"){
     const e=EX[id],list=b.sets[id]||(b.sets[id]=[]),nm=exName(id,b),st=stepOf(e);
     const p=list[list.length-1],tops=list.filter(x=>x.tag==="T").length;
@@ -1080,7 +1152,7 @@ document.addEventListener("click",ev=>{
   if(act==="delset"){const list=b.sets[id]||[];list.splice(Number(t.dataset.i),1);if(!list.length)delete b.sets[id];persist(k,b);return}
   if(act==="tag"){const list=b.sets[id]||[],i=Number(t.dataset.i),s=list[i];if(!s)return;const before=doneCount(list);const nt=TAG_NEXT[s.tag||""];if(nt)s.tag=nt;else delete s.tag;
     const pv=list[i-1];if(s.tag==="D"&&pv&&num(pv.kg)>0&&num(s.kg)===num(pv.kg))s.kg=roundTo(num(pv.kg)*DROP,stepOf(EX[id]));
-    if(autoCheck(b,id,before))toast(`${exName(id,b)} ${EX[id].sets}세트 완료`);persist(k,b);return}
+    if(autoCheck(b,id,before))toast(`${exName(id,b)} ${exerciseGoal(EX[id],k)}세트 완료`);persist(k,b);return}
   if(act==="setalt"){const v=t.dataset.v;if(v===EX[id].n)delete b.alts[id];else b.alts[id]=v;persist(k,b);return}
   if(act==="altcustom"){const v=($(`alt-${k}-${id}`).value||"").trim().slice(0,40);if(!v){toast("교체할 종목 이름을 입력해 주세요");return}
     document.activeElement&&document.activeElement.blur&&document.activeElement.blur();b.alts[id]=v;persist(k,b);return}
@@ -1098,8 +1170,8 @@ document.addEventListener("change",ev=>{
   s[t.dataset.act]=n;
   const nowPR=isPR(s,base),done=autoCheck(b,id,before);
   persist(k,b,true);
-  if(nowPR&&!wasPR)toast(`신기록! ${nm} ${fmtSet({kg:num(s.kg),reps:num(s.reps)})}${done?` · ${EX[id].sets}세트 완료`:""}`);
-  else if(done)toast(`${nm} ${EX[id].sets}세트 완료`);
+  if(nowPR&&!wasPR)toast(`신기록! ${nm} ${fmtSet({kg:num(s.kg),reps:num(s.reps)})}${done?` · ${exerciseGoal(EX[id],k)}세트 완료`:""}`);
+  else if(done)toast(`${nm} ${exerciseGoal(EX[id],k)}세트 완료`);
   if(t.dataset.act==="reps"&&n>0&&s.tag!=="W"){
     const next=list[Number(t.dataset.i)+1];
     if(!next||next.tag!=="D")startTimer(EX[id].rest,nm);
