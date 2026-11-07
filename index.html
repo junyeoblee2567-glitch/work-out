@@ -265,6 +265,13 @@ footer a{color:var(--muted)}
 .routine-card .routine-card-toolbar{display:flex;gap:4px;flex-shrink:0}
 .routine-card .routine-card-toolbar button{border:1px solid var(--line);border-radius:8px;font-size:12px;padding:6px 9px}
 .routine-card .routine-plan-note{font-size:11px;color:var(--muted)}
+.ef textarea{font:inherit;font-size:14px;line-height:1.5;min-height:80px;width:100%;resize:vertical;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:10px}
+.routine-memo-field{display:grid;gap:6px;font-size:12px;font-weight:700}
+.routine-memo-field textarea{width:100%;min-height:76px;resize:vertical;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:400;line-height:1.5;padding:10px;border:1px solid var(--line);border-radius:9px}
+.routine-rest-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:6px 9px;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.routine-rest-row label{font-size:12px;font-weight:700;white-space:nowrap}
+.routine-rest-row select{flex:1;min-width:100px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:8px;font-size:13px}
+.routine-rest-row .rest-hint{font-size:11px;color:var(--muted)}
 .routine-plan-labels,.routine-plan-row{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 27px;gap:5px;align-items:center}
 .routine-plan-labels{font-size:10px;color:var(--muted);text-align:center}
 .routine-plan-row .plan-index{font-size:12px;font-weight:700;color:var(--muted);text-align:center}
@@ -427,7 +434,7 @@ function cleanEx(e){
     reps:Number.isInteger(Number(v.reps))?Math.max(0,Math.min(100,Number(v.reps))):0,
     tag:["","W","T","B","D"].includes(v.tag)?v.tag:""
   })):null;
-  return {plan,id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,80),
+  return {plan,id:String(e.id).slice(0,40),n:String(e.n).slice(0,40),tgt:String(e.tgt||"").slice(0,40),part:String(e.part||"").slice(0,30),note:String(e.note||"").slice(0,1000),
     t:fin(e.t)&&e.t>=0?Math.round(e.t):null,r,inc:fin(e.inc)&&e.inc>=0?e.inc:0,rest:fin(e.rest)&&e.rest>0?Math.round(e.rest):90,
     alts:Array.isArray(e.alts)?e.alts.map(a=>String(a).trim().slice(0,40)).filter(Boolean).slice(0,6):[],sets,top,del:!!e.del};
 }
@@ -870,11 +877,24 @@ function routinePlanRowHTML(id,row,i){
     <button class="plan-remove" type="button" data-act="planremove" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제">×</button>
   </div>`;
 }
+const ROUTINE_NOTE_LIMIT=1000;
+const ROUTINE_REST_OPTIONS=[15,30,45,60,75,90,105,120,135,150,180,210,240,270,300,360,420,480,600];
+function routineRestChoices(seconds){
+  const values=[...new Set([...ROUTINE_REST_OPTIONS,seconds])].filter(v=>Number.isInteger(v)&&v>=15&&v<=600).sort((a,b)=>a-b);
+  return values.map(v=>`<option value="${v}"${v===seconds?' selected':''}>${mmss(v)}</option>`).join('');
+}
+function routineCardRest(id){
+  const card=[...document.querySelectorAll('.routine-card')].find(el=>el.dataset.planEx===id);
+  if(!card)return null;
+  const rest=Number(card.querySelector('[data-rest-field="seconds"]')?.value);
+  if(!Number.isInteger(rest)||rest<15||rest>600){toast('휴식시간은 15초~10분 사이로 선택하세요');return null;}
+  return rest;
+}
 function renderRoutine(){
   const s=SMAP[rsel],act=activeEx(s);
   let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
   h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
-  h+=`<p class="hint">종목별 세트 유형·중량·횟수를 입력하고 <b>구성 저장</b>을 누르세요. 각 종목의 <b>↑ ↓</b>로 순서를 변경합니다. 과거 운동기록은 변경되지 않습니다. 운동기록 화면의 ‘루틴 업데이트’에서 실제 수행 결과를 확인 후 기본 루틴에 반영할 수도 있습니다.</p>`;
+  h+=`<p class="hint">종목별 세트 유형·중량·횟수·<b>휴식시간·운동 메모</b>를 설정하고 <b>구성 저장</b>을 누르세요. 각 종목의 <b>↑ ↓</b>로 순서를 변경합니다. 과거 운동기록은 변경되지 않습니다. 운동기록 화면의 ‘루틴 업데이트’에서 실제 수행 결과를 확인 후 기본 루틴에 반영할 수도 있습니다.</p>`;
   h+=`<div class="routine-cards">`;
   if(!act.length)h+=`<p class="hint">종목이 없습니다. 아래의 종목 추가를 이용하세요.</p>`;
   for(let i=0;i<act.length;i++){
@@ -885,6 +905,8 @@ function renderRoutine(){
       <div class="routine-card-header"><div class="routine-card-title">${i+1}. ${esc(e.n)}</div>
         <div class="routine-card-toolbar"><button data-act="up" data-ex="${e.id}" ${i===0?'disabled':''} aria-label="${esc(e.n)} 위로 이동" title="위로 이동">↑</button><button data-act="down" data-ex="${e.id}" ${i===act.length-1?'disabled':''} aria-label="${esc(e.n)} 아래로 이동" title="아래로 이동">↓</button></div></div>
       <div class="routine-plan-note">${manually?'직접 설정한 기본 구성':recent?'최근 운동 기록에서 불러온 구성':'기본 구성'} · ${rows.length}세트</div>
+      <div class="routine-rest-row"><label for="routine-rest-${esc(e.id)}">⏱ 세트 사이 휴식</label><select id="routine-rest-${esc(e.id)}" data-rest-field="seconds" aria-label="${esc(e.n)} 휴식시간">${routineRestChoices(e.rest)}</select><span class="rest-hint">구성 저장 시 적용</span></div>
+      <label class="routine-memo-field" for="routine-note-${esc(e.id)}">📝 운동종목 메모<textarea id="routine-note-${esc(e.id)}" data-plan-field="note" maxlength="${ROUTINE_NOTE_LIMIT}" placeholder="예: 팔꿈치 고정, 어깨 통증 주의, 다음 운동에서 중량 조절">${esc(e.note||"")}</textarea><span class="rest-hint">루틴에 저장되며 운동기록 화면에도 표시됩니다. 날짜별 메모와는 별도입니다.</span></label>
       <div class="routine-plan-labels"><span>세트</span><span>유형</span><span>중량 kg</span><span>횟수</span><span></span></div>
       <div class="routine-plan-rows">${rows.map((r,j)=>routinePlanRowHTML(e.id,r,j)).join('')}</div>
       <div class="routine-card-actions"><button data-act="planadd" data-ex="${e.id}">＋ 세트 추가</button><button class="plan-save" data-act="plansave" data-ex="${e.id}">구성 저장</button><button data-act="editex" data-ex="${e.id}">종목 설정</button><button class="plan-delete" data-act="removeex" data-ex="${e.id}">종목 삭제</button></div>
@@ -913,11 +935,26 @@ function collectRoutineCard(id){
 async function savePlanCard(id){
   const ex=EX[id],plan=collectRoutineCard(id);
   if(!ex||!plan)return;
-  const prior=ex.plan,priorSets=ex.sets,priorTop=ex.top;
-  ex.plan=plan;ex.sets=Math.min(10,plan.length);ex.top=plan.filter(x=>x.tag==='T').length;
+  const rest=routineCardRest(id);
+  if(rest===null)return;
+  const card=[...document.querySelectorAll('.routine-card')].find(el=>el.dataset.planEx===id);
+  const note=card?.querySelector('[data-plan-field="note"]')?.value.slice(0,ROUTINE_NOTE_LIMIT)??ex.note??"";
+  const prior=ex.plan,priorSets=ex.sets,priorTop=ex.top,priorRest=ex.rest,priorNote=ex.note,sid=ex.s;
+  ex.plan=plan;ex.sets=Math.min(10,plan.length);ex.top=plan.filter(x=>x.tag==='T').length;ex.rest=rest;ex.note=note;
   const ok=await saveRoutine();
-  if(ok)toast(`${ex.n} 기본 구성 저장 완료`);
-  else {ex.plan=prior;ex.sets=priorSets;ex.top=priorTop;render();toast('저장 실패. 다시 시도하세요')}
+  if(ok){
+    // A routine edit changes the active date's rest timer, not archived days.
+    const todayKey=keyOf(today()),b=body(todayKey);
+    if(b.session===sid&&validDaySnapshot(b.routineSnapshot,sid)){
+      const current=b.routineSnapshot.ex.find(x=>x.id===id);
+      if(current&&(current.rest!==rest||current.note!==note)){
+        current.rest=rest;current.note=note;
+        await persist(todayKey,b,true);
+        render();
+      }
+    }
+    toast(`${ex.n} 세트 구성 · 휴식 · 메모 저장 완료`);
+  }else {ex.plan=prior;ex.sets=priorSets;ex.top=priorTop;ex.rest=priorRest;ex.note=priorNote;render();toast('저장 실패. 다시 시도하세요')}
 }
 function changePlanRows(id,removeIndex){
   const card=document.querySelector(`.routine-card[data-plan-ex="${id}"]`);
@@ -1253,7 +1290,9 @@ function pendingPlanCards(){
       const val=key=>row.querySelector(`[data-plan-field="${key}"]`)?.value??'';
       return {kg:Number(val('kg')),reps:Number(val('reps')),tag:val('tag')};
     });
-    return JSON.stringify(rows)!==JSON.stringify(routinePlanRows(ex).map(r=>({kg:Number(r.kg),reps:Number(r.reps),tag:r.tag||''})));
+    const rest=Number(card.querySelector('[data-rest-field="seconds"]')?.value);
+    const note=card.querySelector('[data-plan-field="note"]')?.value??"";
+    return rest!==ex.rest||note!==(ex.note||"")||JSON.stringify(rows)!==JSON.stringify(routinePlanRows(ex).map(r=>({kg:Number(r.kg),reps:Number(r.reps),tag:r.tag||''})));
   }).length>0;
 }
 let routineOrderSaving=false;
@@ -1339,7 +1378,7 @@ function openEditor(st){
      +`<small style="font-size:11.5px;color:var(--muted);margin-top:-6px">목표 세트를 채우면 자동으로 완료 체크돼요. 탑세트를 정하면 첫 세트가 탑으로 표시되고, 그다음 세트는 백오프 무게로 채워져요.</small>`
      +`<label class="ef" for="ed-rest"><span>세트 사이 휴식</span><select id="ed-rest">${[...new Set([...REST_OPTS,e.rest])].sort((a,b)=>a-b).map(v=>`<option value="${v}"${v===e.rest?" selected":""}>${mmss(v)}</option>`).join("")}</select></label>`
      +fld("ed-alts","대체 종목 (쉼표로 구분)",e.alts.join(", "),'maxlength="200" placeholder="예: 바벨로우, 덤벨로우" autocomplete="off"',"기구가 차 있을 때 바로 바꿀 수 있어요")
-     +fld("ed-note","메모",e.note,'maxlength="80" placeholder="예: 마지막 세트 드롭세트" autocomplete="off"')
+     +`<label class="ef" for="ed-note"><span>운동종목 메모</span><textarea id="ed-note" maxlength="${ROUTINE_NOTE_LIMIT}" placeholder="예: 마지막 세트 드롭세트">${esc(e.note||"")}</textarea></label>`
      +fld("ed-t","영상 위치 (분:초)",e.t!=null?`${pad(Math.floor(e.t/60))}:${pad(e.t%60)}`:"",'inputmode="numeric" placeholder="예: 07:20" maxlength="5"',"넣으면 카드에 ▶ 영상 링크가 생겨요");
   }
   $("edFields").innerHTML=f;$("editor").hidden=false;
@@ -1763,7 +1802,10 @@ document.addEventListener("click",ev=>{
   if(act==="tminus"&&timer){if(timer.done)return;timer.end-=15000;saveTimer();tick();return}
   if(act==="tplus"&&timer){if(timer.done){timer.done=false;timer.end=Date.now()+15000;timer.total=15;wake(true)}else{timer.end+=15000;timer.total+=15}saveTimer();tick();return}
   if(act==="tstop"){stopTimer();return}
-  if(act==="timer"){const b=body(k);startTimer(EX[id].rest,exName(id,b));return}
+  if(act==="timer"){
+    const b=body(k),selected=dayExerciseList(k,b).find(e=>e.id===id);
+    startTimer(selected?.rest||EX[id]?.rest||90,exName(id,b));return;
+  }
   if(act==="export"){exportBackup();return}
   if(act==="snooze"){lsSet("split3-snooze",Date.now()+3*864e5);render();return}
   if(act==="planadd"){changePlanRows(id,null);return}
@@ -1885,7 +1927,10 @@ document.addEventListener("change",ev=>{
   else if(done)toast(`${nm} ${exerciseGoal(EX[id],k)}세트 완료`);
   if(t.dataset.act==="reps"&&n>0&&s.tag!=="W"){
     const next=list[Number(t.dataset.i)+1];
-    if(!next||next.tag!=="D")startTimer(EX[id].rest,nm);
+    if(!next||next.tag!=="D"){
+      const selected=dayExerciseList(k,b).find(e=>e.id===id);
+      startTimer(selected?.rest||EX[id]?.rest||90,nm);
+    }
   }
 });
 document.addEventListener("keydown",ev=>{
