@@ -1071,6 +1071,9 @@ async function saveRoutine(reset){
     applyRoutine(r);
     render();
     syncQueueRoutine();
+    if(!syncConf){setStatus('루틴은 휴대폰에 저장됐지만 워치 서버가 연결되지 않았습니다.',true)}
+    else if(!syncBooted){setStatus('루틴은 휴대폰에 저장됐지만 서버 전송 대기 중입니다. 하단 갤럭시 워치 동기화에서 ‘이 루틴만 워치 서버에 전송’을 눌러 주세요.',true)}
+    else{setStatus('루틴 로컬 저장 완료 · 서버 동기화 확인 중');}
     return true;
   }catch(e){
     setStatus("루틴 저장에 실패했습니다. 저장 공간과 연결 상태를 확인하세요.",true);
@@ -1498,8 +1501,28 @@ function syncPanel(){
     <div style="display:flex;gap:8px"><button id="syncConnect" class="ghost">연결 / 새로고침</button><button id="syncDisconnect" class="ghost">연결 해제</button></div>
     <small>서버 주소 예시: <code>https://workout-sync-hs5r.onrender.com</code> · 실제로 사용하던 서버 주소인지 확인하세요. 기존 인증 토큰이 필요합니다. 토큰은 채팅에 공유하지 마세요.</small>
     <small>중요: 기록 충돌 시 어느 한쪽을 자동으로 덮어쓰지 않습니다. 먼저 JSON 백업을 저장한 후 선택하세요.</small>
+    ${syncConf?'<button id="syncPushRoutine" class="ghost">이 루틴만 워치 서버에 전송</button>':''}
     ${syncError.includes('기록 차이')?'<button id="syncPushLocal" class="ghost">휴대폰 기록을 서버에 반영 (백업 후)</button>':''}
   </div>`;
+  // Explicitly push only the current routine, leaving ALL dated workout logs untouched.
+  // This also works if initial history reconciliation is blocked by a conflict.
+  if($("syncPushRoutine"))$("syncPushRoutine").onclick=async()=>{
+    if(!syncConf||!backend)return;
+    if(!confirm('현재 휴대폰의 루틴만 서버에 반영할까요? 서버에 있는 기존 루틴은 교체되지만 운동 날짜별 기록은 변경하지 않습니다. 먼저 JSON 백업을 권장합니다.'))return;
+    const button=$("syncPushRoutine");button.disabled=true;
+    try{
+      const latest=await syncReq('/api/state');
+      const latestRevision=latest.revisions?.routine||0;
+      const localRoutine=routineCustom?routineData():{};
+      const uploaded=await syncReq('/api/routine','PUT',{data:localRoutine,revision:latestRevision});
+      syncRev.routine=uploaded.revision;
+      delete syncPending.routine;
+      // Do not set syncBooted=true here: unresolved history conflicts remain protected.
+      syncError=syncBooted?'':'루틴 서버 전송 완료. 날짜별 기록의 동기화 차이는 별도로 해결해야 합니다.';
+      toast('루틴을 워치 서버에 전송했습니다. 워치에서 기록 동기화를 눌러 주세요.');
+      syncPanel();
+    }catch(e){syncError='루틴 서버 전송 실패: '+e.message;syncPanel()}
+  };
   if($("syncPushLocal"))$("syncPushLocal").onclick=async()=>{
     if(!syncConf||!backend)return;
     if(!confirm('먼저 JSON 백업을 저장했나요? 휴대폰에 있는 날짜 및 루틴의 내용이 서버의 같은 항목을 덮어쓸 수 있습니다. 계속할까요?'))return;
@@ -1541,6 +1564,7 @@ async function syncFlush(){
       try{
         const out=await syncReq(ep,'PUT',{data,revision:syncRev[k]||0});syncRev[k]=out.revision;
         if(syncPending[k]===data)delete syncPending[k];
+        if(k==='routine'&&!syncPending.routine)setStatus('루틴 서버 전송 완료 · 워치에서 기록 동기화를 누르면 반영됩니다.');
       }catch(e){if(String(e).includes('409')){syncError='동일 날짜가 다른 기기에서 변경됐습니다. 충돌을 확인하세요.';}throw e}
     }
     syncError='';
