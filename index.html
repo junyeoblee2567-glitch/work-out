@@ -1501,9 +1501,18 @@ function syncPanel(){
     <div style="display:flex;gap:8px"><button id="syncConnect" class="ghost">연결 / 새로고침</button><button id="syncDisconnect" class="ghost">연결 해제</button></div>
     <small>서버 주소 예시: <code>https://workout-sync-hs5r.onrender.com</code> · 실제로 사용하던 서버 주소인지 확인하세요. 기존 인증 토큰이 필요합니다. 토큰은 채팅에 공유하지 마세요.</small>
     <small>중요: 기록 충돌 시 어느 한쪽을 자동으로 덮어쓰지 않습니다. 먼저 JSON 백업을 저장한 후 선택하세요.</small>
-    ${syncConf?'<button id="syncPushRoutine" class="ghost">이 루틴만 워치 서버에 전송</button>':''}
+    ${syncConf?'<button id="syncSafePull" class="ghost">워치 기록 안전 가져오기</button><button id="syncPushRoutine" class="ghost">이 루틴만 워치 서버에 전송</button>':''}
     ${syncError.includes('기록 차이')?'<button id="syncPushLocal" class="ghost">휴대폰 기록을 서버에 반영 (백업 후)</button>':''}
   </div>`;
+  if($("syncSafePull"))$("syncSafePull").onclick=async()=>{
+    const button=$("syncSafePull");button.disabled=true;
+    try{
+      const result=await syncPullDaysSafely();
+      syncError=result.skipped?`${result.imported}일 가져옴 · ${result.skipped}일은 휴대폰 수정본 보호를 위해 유지 (충돌 확인 필요)`:'';
+      toast(result.imported?`워치 운동기록 ${result.imported}일 반영`:'가져올 새 운동기록이 없습니다');
+    }catch(e){syncError='워치 기록 가져오기 실패: '+e.message}
+    syncPanel();
+  };
   // Explicitly push only the current routine, leaving ALL dated workout logs untouched.
   // This also works if initial history reconciliation is blocked by a conflict.
   if($("syncPushRoutine"))$("syncPushRoutine").onclick=async()=>{
@@ -1570,6 +1579,35 @@ async function syncFlush(){
     syncError='';
   }catch(e){syncError=e.message;}
   finally{syncBusy=false;if(syncBooted&&!Object.keys(syncPending).length&&!syncError)syncRemember();syncPanel()}
+}
+// Import only server days proven safe. No whole-database overwrite and no
+// routine replacement. For a same-date change, require a remembered baseline
+// showing the local day is unedited; otherwise keep the local copy.
+async function syncPullDaysSafely(){
+  if(!syncConf||!backend)throw Error('동기화 설정을 확인하세요');
+  if(syncBusy)throw Error('동기화 진행 중입니다. 완료 후 다시 시도하세요');
+  const state=await syncReq('/api/state');
+  const base=syncBaseline();
+  let imported=0,skipped=0;
+  for(const [k,remote] of Object.entries(state.days||{})){
+    if(Object.hasOwn(syncPending,k)){skipped++;continue}
+    const local=docs[k];
+    const remoteHash=syncFingerprint(norm(remote));
+    if(local===undefined){docs[k]=norm(remote);imported++;continue}
+    const localHash=syncFingerprint(norm(local));
+    if(localHash===remoteHash)continue;
+    const baselineHash=base?.hashes?.[k];
+    const baselineRev=base?.revs?.[k];
+    if(baselineHash && localHash===baselineHash && (state.revisions?.[k]||0)!==baselineRev){
+      docs[k]=norm(remote);imported++;
+    }else skipped++;
+  }
+  if(imported){await backend.saveAll();render()}
+  // When not booted due to an unresolved conflict, do not claim full synchronization.
+  if(syncBooted){for(const [k,rev] of Object.entries(state.revisions||{})){
+    if(k!=='routine' && docs[k] && syncFingerprint(norm(docs[k]))===syncFingerprint(norm(state.days[k])))syncRev[k]=rev;
+  } if(!Object.keys(syncPending).length)syncRemember()}
+  return {imported,skipped};
 }
 async function syncPoll(){
   if(!syncConf||!syncBooted||syncBusy||Object.keys(syncPending).length)return;
@@ -1641,6 +1679,15 @@ async function syncStart(force=false){
             render();await syncFlush();if(!Object.keys(syncPending).length)syncRemember();return;
           }
         }
+        // Even if old same-date data conflicts, never block NEW watch dates.
+        // Those dates cannot overwrite local edits because they do not exist locally.
+        let added=0;
+        for(const [k,remote] of Object.entries(state.days||{})){
+          if(!Object.hasOwn(docs,k) && !Object.hasOwn(syncPending,k)){
+            docs[k]=norm(remote);added++;
+          }
+        }
+        if(added){await backend.saveAll();render()}
         // Never prompt or overwrite during ordinary startup. Manual resolution only.
         if(!force){syncError='서버와 휴대폰의 기록 차이가 있습니다. JSON 백업 후 아래 연결 / 새로고침에서 서버 기록을 선택하거나 휴대폰 기록을 서버에 반영하세요.';syncBooted=false;syncPanel();return}
         if(!confirm('서버에 기존 기록이 있습니다. 서버의 기록으로 휴대폰 기록을 교체할까요? 먼저 JSON 백업을 권장합니다.')){
