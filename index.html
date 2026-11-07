@@ -599,7 +599,10 @@ function renderDay(){
   const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s),sessionSnapshot=previousSessionSnapshot(b.session,k);
   // Show active routine items first, in their current order. Historical records
   // for removed items are available below, separately marked as archived.
-  const shown=[...act,...s.ex.filter(e=>e.del&&(b.sets[e.id]||b.checks[e.id]))];
+  // Deleted exercises may still have historical entries in today's data.
+  // Do NOT show them as active workout cards: past records remain available
+  // in the history tab, while the workout tab reflects the current routine.
+  const shown=act;
   const n=act.filter(e=>b.checks[e.id]).length;
   let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div>
   <div class="workout-tools">
@@ -928,14 +931,20 @@ function chooseLibraryExercise(choiceKey){
     ask("기존 종목은 현재 루틴에서 제외되고, 이미 저장된 기록은 보관됩니다. '"+source.n+"'으로 변경할까요?","종목 변경",apply);
   }else apply();
 }
+let routineRemovalPending=false;
 function removeRoutineExercise(id){
-  const ex=EX[id];if(!ex)return;
-  ask(`'${ex.n}'을(를) 루틴에서 제외할까요? 이전 기록과 현재 날짜의 기존 세트는 삭제하지 않습니다.`,"루틴에서 삭제",async()=>{
+  const ex=EX[id];if(!ex||ex.del)return;
+  if(routineRemovalPending){toast("이전 종목 삭제 저장 중입니다");return;}
+  ask(`'${ex.n}'을(를) 루틴에서 제외할까요? 기존 운동 기록은 기록 탭에서 확인할 수 있습니다.`,"루틴에서 삭제",async()=>{
+    if(routineRemovalPending)return;
+    routineRemovalPending=true;
     const before=routineData();
     ex.del=true;open.delete(id);
-    const saved=await saveRoutine();
-    if(saved)toast("루틴에서 종목을 제외했습니다");
-    else {applyRoutine(before);render();toast("종목 삭제에 실패했습니다. 다시 시도하세요")}
+    try{
+      const saved=await saveRoutine();
+      if(saved)toast("종목을 현재 루틴에서 제외했습니다 · 과거 기록 유지");
+      else {applyRoutine(before);render();toast("종목 삭제에 실패했습니다. 다시 시도하세요")}
+    }finally{routineRemovalPending=false;}
   });
 }
 function discardSelectedDay(){
@@ -1002,10 +1011,10 @@ $("edForm").addEventListener("submit",ev=>{
   closeEditor();saveRoutine();
 });
 $("edDel").addEventListener("click",()=>{
-  if(!edState||!edState.id)return;const id=edState.id,e=EX[id];
-  ask(`'${e.n}'을(를) 루틴에서 뺄까요? 지금까지 기록은 기록 탭에 남아요.`,"삭제",()=>{
-    const before=routineData();e.del=true;open.delete(id);closeEditor();
-    saveRoutine().then(ok=>{if(ok)toast("루틴에서 종목을 제외했습니다");else{applyRoutine(before);render();toast("종목 삭제 실패")}})});
+  if(!edState||!edState.id)return;
+  const id=edState.id;
+  closeEditor();
+  removeRoutineExercise(id);
 });
 function resetRoutine(){
   ask("영상 기본 루틴으로 되돌릴까요? 직접 추가·수정한 내용이 사라져요. 지난 기록은 남아요.","되돌리기",()=>{
