@@ -449,7 +449,7 @@ function dayExerciseList(k,b){
       const known=new Set(snapshot.map(e=>e.id));
       for(const id of recorded){if(known.has(id))continue;
         const ex=EX[id]||DEFMAP[id];
-        snapshot.push(ex?{...cloneDayExercise(ex),s:b.session,del:false}:{id,n:(b.alts||{})[id]||`이전 운동 (${id})`,s:b.session,rest:90,sets:3,top:0,alts:[],plan:null,t:null});
+        snapshot.push(ex?{...cloneDayExercise(ex),s:b.session,archived:true,del:false}:{id,n:(b.alts||{})[id]||`이전 운동 (${id})`,s:b.session,archived:true,rest:90,sets:3,top:0,alts:[],plan:null,t:null});
       }
     }
     return snapshot;
@@ -495,13 +495,13 @@ const fmtSet=t=>t.kg>0?`${fmt(t.kg)}kg × ${t.reps||"-"}`:`${t.reps||"-"}회`;
 
 function norm(b){
   b=b&&typeof b==="object"?b:{};
-  const o={session:SMAP[b.session]?b.session:null,checks:{...(b.checks||{})},sets:JSON.parse(JSON.stringify(b.sets||{})),alts:{...(b.alts||{})},memo:typeof b.memo==="string"?b.memo:""};
+  const o={session:SMAP[b.session]?b.session:null,rest:!!b.rest,checks:{...(b.checks||{})},sets:JSON.parse(JSON.stringify(b.sets||{})),alts:{...(b.alts||{})},memo:typeof b.memo==="string"?b.memo:""};
   if(validDaySnapshot(b.routineSnapshot,o.session))
     o.routineSnapshot=JSON.parse(JSON.stringify(b.routineSnapshot));
-  if(!o.session){for(const id of [...Object.keys(o.checks),...Object.keys(o.sets)]){if(EX[id]&&PREFIX[id[0]]){o.session=PREFIX[id[0]];break}}}
+  if(!o.session&&!o.rest){for(const id of [...Object.keys(o.checks),...Object.keys(o.sets)]){if(EX[id]&&PREFIX[id[0]]){o.session=PREFIX[id[0]];break}}}
   return o;
 }
-const isEmpty=b=>!b.session&&!Object.keys(b.checks).length&&!Object.keys(b.sets).length&&!Object.keys(b.alts).length&&!b.memo;
+const isEmpty=b=>!b.session&&!b.rest&&!Object.keys(b.checks).length&&!Object.keys(b.sets).length&&!Object.keys(b.alts).length&&!b.memo;
 const body=k=>norm(docs[k]);
 const exName=(id,b)=>(b&&b.alts&&b.alts[id])||EX[id].n;
 function dataCount(b){let s=0;for(const l of Object.values(b.sets))s+=l.length;return {sets:s,checks:Object.keys(b.checks).length}}
@@ -592,7 +592,8 @@ function renderPicker(k,b){
   for(const s of SESS){if(s.id===nx)continue;h+=`<button class="pick${cur===s.id?" cur":""}" style="--c:var(${s.c})" data-act="pick" data-s="${s.id}"><b>${s.name}</b><span class="pa">${ago(s.id)}</span></button>`}
   h+=`</div></div>`;
   if(changing)h+=`<div class="rowbtns"><button class="ghost" data-act="unset">운동 안 함 (휴식)</button><button class="ghost" data-act="cancelchange">취소</button></div>`;
-  else h+=`<p class="hint">${k<keyOf(today())?"당시 수행한 루틴을 선택해 기록하세요. 현재 루틴을 초기 목록으로 사용하지만 이후 수정해도 오늘 루틴에는 영향을 주지 않습니다.":"고르지 않은 날은 휴식으로 남아요. 일정이 꼬이면 아무 세션이나 골라도 다음 추천이 거기서부터 이어집니다."}</p>`;
+  else if(k<keyOf(today()))h+=`<div class="rowbtns"><button class="ghost" data-act="pastrest">운동 안 함 (휴식)</button></div>`;
+  if(!changing)h+=`<p class="hint">${k<keyOf(today())?"당시 수행한 루틴을 선택해 기록하세요. 현재 루틴을 초기 목록으로 사용하지만 이후 수정해도 오늘 루틴에는 영향을 주지 않습니다.":"고르지 않은 날은 휴식으로 남아요. 일정이 꼬이면 아무 세션이나 골라도 다음 추천이 거기서부터 이어집니다."}</p>`;
   return h;
 }
 
@@ -657,28 +658,36 @@ function pastMaybeCheck(b,e){
 }
 function renderPastWorkout(k,b,nag){
   const s=SMAP[b.session],snapshot=b.routineSnapshot;
-  const items=dayExerciseList(k,b);
-  const completed=items.filter(e=>b.checks[e.id]).length;
+  const allItems=dayExerciseList(k,b);
+  const items=[...allItems.filter(e=>!e.archived),...allItems.filter(e=>e.archived)];
+  const completed=items.filter(e=>!e.archived&&b.checks[e.id]).length;
+  const activeCount=items.filter(e=>!e.archived).length;
   const title=validDaySnapshot(snapshot,b.session)?snapshot.name:(s?s.name:b.session);
-  let h=`<div class="dayhead" style="--c:var(${s?s.c:'--p-rest'})"><span class="k">${dayLabel(view)}</span><h2>${esc(title)}</h2><span class="prog"><b>${completed}/${items.length}</b> 종목 완료</span><button class="chg" data-act="pastchangesession">세션 변경</button></div>`;
+  let h=`<div class="dayhead" style="--c:var(${s?s.c:'--p-rest'})"><span class="k">${dayLabel(view)}</span><h2>${esc(title)}</h2><span class="prog"><b>${completed}/${activeCount}</b> 종목 완료</span><button class="chg" data-act="pastchangesession">세션 변경</button></div>`;
   if(changing){
-    h+=`<section class="card" style="padding:14px;gap:10px"><strong>${esc(k)}의 세션 선택</strong><p class="hint">기록된 운동종목·세트·중량·횟수는 유지하고, 해당 날짜의 세션 이름만 변경합니다. 현재 루틴에는 영향을 주지 않습니다.</p><div class="picks">`;
+    h+=`<section class="card" style="padding:14px;gap:10px"><strong>${esc(k)}의 세션 선택</strong><p class="hint">선택한 세션의 운동종목 목록을 해당 날짜에 불러옵니다. 기존 세트 기록은 삭제하지 않고 별도 보관합니다. 현재 루틴은 바뀌지 않습니다.</p><div class="picks">`;
     for(const option of SESS){h+=`<button class="pick" style="--c:var(--p-${esc(option.id)})" data-act="pastpick" data-s="${esc(option.id)}"><b>${esc(option.short||option.name)}</b><span class="pa">${esc(option.name)}</span></button>`}
-    h+=`</div><button class="ghost" data-act="pastcancelchange">취소</button></section>`;
+    h+=`</div><div class="rowbtns"><button class="ghost" data-act="pastrest">운동 안 함 (휴식)</button><button class="ghost" data-act="pastcancelchange">취소</button></div></section>`;
     $('app').innerHTML=nag+h;return;
   }
   h+=`<div class="sec"><p class="hint">✎ 지난 운동 기록을 수정하는 중입니다. 중량·횟수 변경, 세트 추가·삭제는 <b>${esc(k)}</b>에만 적용됩니다. 현재 기본 루틴은 바뀌지 않습니다.</p>`;
-  if(!validDaySnapshot(snapshot,b.session))h+=`<p class="hint">이 날짜는 옛 버전의 기록입니다. 수행한 종목만 복원할 수 있습니다. 기록을 수정하면 해당 날짜의 목록을 별도로 고정합니다.</p>`;
+  if(!validDaySnapshot(snapshot,b.session))h+=`<p class="hint">이 날짜는 옛 버전의 기록입니다. 수행한 종목만 복원할 수 있습니다. 세션 변경 시 선택한 루틴을 그날의 계획으로 새로 불러올 수 있습니다.</p>`;
   if(snapshot&&snapshot.createdForPast)h+=`<p class="hint">기록 누락일에 현재 루틴을 참고해 생성한 목록입니다. 당시 수행한 내용에 맞게 고쳐 입력하세요.</p>`;
   if(snapshot&&snapshot.sessionCorrected)h+=`<p class="hint">세션을 수정한 과거 기록입니다. 이전에 저장된 운동종목과 세트는 그대로 유지됩니다.</p>`;
   if(!items.length)h+=`<p class="hint">등록된 운동이 없습니다. 아래에서 종목을 추가하세요.</p>`;
+  let archiveHeadingShown=false;
   for(const e of items){
+    if(e.archived&&!archiveHeadingShown){h+=`<h3 class="hint" style="margin:18px 0 8px">변경 전 기록 보관 · 현재 선택한 루틴 제외</h3>`;archiveHeadingShown=true;}
     const id=e.id,rows=Array.isArray((b.sets||{})[id])?b.sets[id]:[];
     const title=historicalExerciseName(e,b),done=!!b.checks[id];
     const isOpen=open.has(id);
-    h+=`<div class="card${done?' done':''}"><div class="row"><button class="chk" data-act="pasttoggle" data-ex="${esc(id)}" aria-label="${esc(title)} 완료" aria-pressed="${done}"><span>✓</span></button><div class="info"><span class="name">${esc(title)}</span><span class="meta">${rows.length}세트 기록 · ${esc(e.tgt||'과거 운동')}</span></div><button class="logbtn" data-act="expand" data-ex="${esc(id)}">${isOpen?'접기':'수정'}</button></div>`;
+    const guide=Array.isArray(e.plan)&&e.plan.length?e.plan:latestExercisePlan(b.session,id,k)?.rows;
+    const planned=Array.isArray(guide)&&guide.length?guide.length:(e.sets||3);
+    h+=`<div class="card${done?' done':''}"><div class="row"><button class="chk" data-act="pasttoggle" data-ex="${esc(id)}" aria-label="${esc(title)} 완료" aria-pressed="${done}"><span>✓</span></button><div class="info"><span class="name">${esc(title)}</span><span class="meta">${rows.length}세트 기록 · 계획 ${planned}세트 · ${esc(e.tgt||'과거 운동')}</span></div><button class="logbtn" data-act="expand" data-ex="${esc(id)}">${isOpen?'접기':'수정'}</button></div>`;
     if(isOpen){
       h+=`<div class="sets"><div class="hist">${esc(k)} 수행 기록 · 직접 수정 가능</div>`;
+      if(guide?.length)h+=`<p class="hint">참고 계획: ${guide.slice(0,12).map((row,i)=>`${i+1}. ${planRowLabel(row)}`).map(esc).join(' / ')}${guide.length>12?' …':''}</p>`;
+      else if(!rows.length)h+=`<p class="hint">이 종목의 기본 계획은 ${planned}세트입니다. 실제 수행한 세트만 아래에서 추가하세요.</p>`;
       rows.forEach((r,i)=>{
         const label=r.tag?esc(TAG[r.tag]||r.tag):String(i+1);
         h+=`<div class="set"><button class="tag t-${esc(r.tag||'N')}" data-act="pasttag" data-ex="${esc(id)}" data-i="${i}" title="세트 유형 변경">${label}</button>
@@ -698,7 +707,11 @@ function renderDay(){
   const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
   if(k<keyOf(today())){
     if(!b.session){
-      app.innerHTML=nag+`<p class="hint">이 날짜에는 운동기록이 없습니다. 실제로 운동했는데 기록을 빠뜨렸다면 아래에서 루틴을 선택해 입력하세요. 선택하는 루틴은 현재 템플릿을 참고하며, 과거 운동으로 확인된 기록은 아닙니다.</p>`+renderPicker(k,b);
+      if(b.rest&&!changing){
+        app.innerHTML=nag+`<div class="dayhead" style="--c:var(--p-rest)"><span class="k">${dayLabel(view)}</span><h2>운동 안 함 · 휴식</h2><button class="chg" data-act="pastchangesession">세션 변경</button></div><p class="hint">${esc(k)}은 운동하지 않은 날로 표시했습니다. 운동기록을 추가하려면 세션을 변경하세요.</p>`;
+      }else{
+        app.innerHTML=nag+`<p class="hint">이 날짜에 실제 운동한 루틴을 선택하세요. 운동하지 않았다면 '운동 안 함'으로 표시할 수 있습니다.</p>`+renderPicker(k,b);
+      }
       return;
     }
     renderPastWorkout(k,b,nag);return;
@@ -1340,7 +1353,7 @@ document.addEventListener("click",ev=>{
   if(k<keyOf(today())&&tab==="day"){
     const allowed=['tab','prev','next','today','day','export','snooze',
       'pick','unset','change','cancelchange','expand','pastchangesession','pastpick','pastcancelchange','pastaddex','pastremoveex',
-      'pasttoggle','pastaddset','pastdelset','pasttag'];
+      'pasttoggle','pastaddset','pastdelset','pasttag','pastrest'];
     if(!allowed.includes(act)){toast('지난 날짜는 그날의 운동기록만 수정할 수 있습니다');return;}
   }
   if(act==="tab"){tab=t.dataset.t;changing=false;render();window.scrollTo(0,0);return}
@@ -1356,32 +1369,52 @@ document.addEventListener("click",ev=>{
     if(act==="pastcancelchange"){
       changing=false;render();return;
     }
+    if(act==="pastrest"){
+      const counts=dataCount(b);
+      const apply=()=>{
+        const empty=norm(null);
+        empty.rest=true;
+        // The past day is marked as rest. Existing records must be explicitly
+        // confirmed before removal; historical days outside this date are untouched.
+        empty.memo=b.memo;
+        changing=false;open.clear();persist(k,empty);
+      };
+      if(b.session&&(counts.sets||counts.checks)){
+        ask(`${k}의 ${counts.sets}개 세트 및 완료 표시 ${counts.checks}개가 이 날짜에서 삭제됩니다. '운동 안 함'으로 변경할까요?`,"휴식으로 변경",apply);
+      }else apply();
+      return;
+    }
     if(act==="pastpick"){
       const sid=t.dataset.s;
       if(!SMAP[sid])return;
-      if(!b.session){toast('먼저 과거 운동 세션을 선택하세요');return;}
-      if(b.session===sid){changing=false;render();return;}
+      if(b.session===sid&&!b.rest){changing=false;render();return;}
       const previous=b.session;
       const apply=()=>{
-        const original=validDaySnapshot(b.routineSnapshot,b.session)?b.routineSnapshot:ensurePastSnapshot(k,b);
-        const existing=JSON.parse(JSON.stringify(original.ex||[]));
-        // Keep every historically recorded exercise and its IDs; do not
-        // rewrite the global routine template or drop a historical set.
-        const savedIds=new Set(existing.map(e=>e.id));
-        for(const oldId of new Set([...Object.keys(b.sets||{}),...Object.keys(b.checks||{})])){
-          if(savedIds.has(oldId))continue;
-          const ex=EX[oldId]||DEFMAP[oldId];
-          existing.push(ex?cloneDayExercise(ex):{id:oldId,n:(b.alts||{})[oldId]||`과거 운동 (${oldId})`,rest:90,sets:3,top:0,alts:[],plan:null});
+        // Copy the selected session's CURRENT routine to THIS historical date.
+        // Never change the global routine, and never delete recorded exercise rows.
+        const fresh=makeDaySnapshot(sid);
+        if(!fresh){toast('루틴을 불러오지 못했습니다');return;}
+        fresh.createdForPast=true;
+        fresh.sessionCorrected=!!previous;
+        if(previous)fresh.previousSession=previous;
+        const freshIds=new Set(fresh.ex.map(e=>e.id));
+        const previousSnapshot=validDaySnapshot(b.routineSnapshot,previous)?b.routineSnapshot:null;
+        const previousEx=previousSnapshot?previousSnapshot.ex:[];
+        const recordedIds=[...new Set([...Object.keys(b.sets||{}),...Object.keys(b.checks||{})])];
+        for(const oldId of recordedIds){
+          if(freshIds.has(oldId))continue;
+          const earlier=previousEx.find(e=>e.id===oldId);
+          const ex=earlier||EX[oldId]||DEFMAP[oldId];
+          const archived=ex?cloneDayExercise(ex):{id:oldId,n:(b.alts||{})[oldId]||`이전 운동 (${oldId})`,rest:90,sets:3,top:0,alts:[],plan:null};
+          fresh.ex.push({...archived,archived:true});
         }
-        const noWork=!existing.length&&!Object.keys(b.sets||{}).length&&!Object.keys(b.checks||{}).length;
-        b.session=sid;
-        b.routineSnapshot=noWork?makeDaySnapshot(sid):{
-          ...original,v:1,session:sid,name:SMAP[sid].name,ex:existing,
-          previousSession:previous,sessionCorrected:true
-        };
+        b.session=sid;b.rest=false;b.routineSnapshot=fresh;
         changing=false;open.clear();persist(k,b);
       };
-      ask(`과거 날짜 ${k}의 세션을 ${SMAP[previous]?.short||previous} → ${SMAP[sid].short}로 변경할까요? 기록된 운동종목과 세트는 삭제하지 않습니다.`,"세션 변경",apply);
+      const cnt=dataCount(b);
+      if(previous&&(cnt.sets||cnt.checks)){
+        ask(`${k}의 세션을 ${SMAP[previous]?.short||previous} → ${SMAP[sid].short}로 변경할까요? ${SMAP[sid].short} 루틴을 불러옵니다. 기존 세트는 아래 '변경 전 기록 보관'에 유지됩니다.`,"루틴 불러오기",apply);
+      }else apply();
       return;
     }
     if(!b.session)return;
