@@ -707,6 +707,15 @@ function libraryEntries(){
   for(const sess of SESS_DEFAULT)addSession(sess,"기본 루틴");
   return items.sort((a,b)=>a.exercise.n.localeCompare(b.exercise.n,"ko")||a.session.localeCompare(b.session,"ko"));
 }
+/** A fresh ID for every library copy. Avoid reusing the ID of an exercise in
+ *  another session because workout records are keyed by exercise ID. */
+function newRoutineExerciseId(){
+  let id;
+  do {
+    id="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  } while(EX[id] || SESS.some(sess=>sess.ex.some(ex=>ex.id===id)));
+  return id;
+}
 function closeExerciseLibrary(){libraryIntent=null;libraryChoices.clear();$("exerciseLibrary").hidden=true}
 function displayExerciseLibrary(){
   if(!libraryIntent)return;
@@ -762,6 +771,7 @@ function chooseLibraryExercise(choiceKey){
       open.delete(old.id);
     }else dest.ex.push(clone);
     closeExerciseLibrary();
+    if(document.activeElement && typeof document.activeElement.blur==="function")document.activeElement.blur();
     open.add(clone.id);
     saveRoutine();
     toast(intent.mode==="replace"?"루틴의 운동종목을 교체했습니다":"운동종목을 루틴에 추가했습니다");
