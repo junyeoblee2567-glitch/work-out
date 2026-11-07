@@ -251,6 +251,12 @@ footer a{color:var(--muted)}
 .library-items small{display:block;font-size:11px;margin-top:3px;color:var(--muted)}
 .library-cancel{margin-top:12px;padding:11px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
 
+.exercise-choice-buttons{display:grid;gap:10px;margin:16px 0 4px}
+.exercise-choice-buttons button{background:var(--bg);color:var(--ink);font:600 14px var(--f-body);padding:14px;text-align:left;border:1px solid var(--line);border-radius:12px}
+.exercise-choice-buttons small{display:block;font-size:11px;color:var(--muted);margin-top:5px;font-weight:400}
+.day-order{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.day-order button{border:1px solid var(--line);color:var(--ink);background:var(--bg);border-radius:9px;min-width:30px;height:34px;font-size:17px}
+.day-order button:disabled{opacity:.25}
 /* v0.5.20: editable, exercise-by-exercise routine cards */
 .routine-cards{display:grid;gap:12px}
 .routine-card{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px;display:grid;gap:10px;min-width:0}
@@ -327,6 +333,17 @@ footer a{color:var(--muted)}
 <div class="toast" id="toast" hidden></div>
 <input id="importFile" type="file" accept="application/json,.json" hidden>
 
+<div class="library-overlay" id="addExerciseChoice" hidden>
+  <section class="library-panel" role="dialog" aria-modal="true" aria-labelledby="addChoiceTitle">
+    <h3 id="addChoiceTitle">운동종목 추가</h3>
+    <p>어디에서 운동종목을 가져올까요?</p>
+    <div class="exercise-choice-buttons">
+      <button type="button" id="chooseExistingExercise">⌕ 기존 운동에서 선택 <small>전체 루틴 · 대체 운동 · 숨겨진 종목 검색</small></button>
+      <button type="button" id="chooseNewExercise">＋ 새로운 운동 만들기 <small>운동명과 세트 계획을 새로 설정</small></button>
+    </div>
+    <button class="library-cancel" type="button" id="addChoiceCancel">취소</button>
+  </section>
+</div>
 <div class="library-overlay" id="exerciseLibrary" hidden>
   <section class="library-panel" role="dialog" aria-modal="true" aria-labelledby="libraryTitle">
     <h3 id="libraryTitle">전체 운동종목</h3>
@@ -439,7 +456,7 @@ function validDaySnapshot(snapshot,sid){
 function snapshotExercises(b){
   if(!b||!b.session)return null;
   if(!validDaySnapshot(b.routineSnapshot,b.session))return null;
-  return b.routineSnapshot.ex.filter(e=>e&&e.id&&e.n).map(e=>({...e,s:b.session,del:false}));
+  return b.routineSnapshot.ex.filter(e=>e&&e.id&&e.n).map(e=>({...e,s:b.session,del:false,archived:!!e.archived}));
 }
 function dayExerciseList(k,b){
   const snapshot=snapshotExercises(b);
@@ -683,7 +700,7 @@ function renderPastWorkout(k,b,nag){
     const isOpen=open.has(id);
     const guide=Array.isArray(e.plan)&&e.plan.length?e.plan:latestExercisePlan(b.session,id,k)?.rows;
     const planned=Array.isArray(guide)&&guide.length?guide.length:(e.sets||3);
-    h+=`<div class="card${done?' done':''}"><div class="row"><button class="chk" data-act="pasttoggle" data-ex="${esc(id)}" aria-label="${esc(title)} 완료" aria-pressed="${done}"><span>✓</span></button><div class="info"><span class="name">${esc(title)}</span><span class="meta">${rows.length}세트 기록 · 계획 ${planned}세트 · ${esc(e.tgt||'과거 운동')}</span></div><button class="logbtn" data-act="expand" data-ex="${esc(id)}">${isOpen?'접기':'수정'}</button></div>`;
+    h+=`<div class="card${done?' done':''}"><div class="row"><button class="chk" data-act="pasttoggle" data-ex="${esc(id)}" aria-label="${esc(title)} 완료" aria-pressed="${done}"><span>✓</span></button><div class="info"><span class="name">${esc(title)}</span><span class="meta">${rows.length}세트 기록 · 계획 ${planned}세트 · ${esc(e.tgt||'과거 운동')}</span></div><div class="day-order"><button data-act="dayup" data-ex="${esc(id)}" ${items.indexOf(e)===0||e.archived?'disabled':''} aria-label="${esc(title)} 순서 위로">↑</button><button data-act="daydown" data-ex="${esc(id)}" ${items.indexOf(e)===items.filter(x=>!x.archived).length-1||e.archived?'disabled':''} aria-label="${esc(title)} 순서 아래로">↓</button></div><button class="logbtn" data-act="expand" data-ex="${esc(id)}">${isOpen?'접기':'수정'}</button></div>`;
     if(isOpen){
       h+=`<div class="sets"><div class="hist">${esc(k)} 수행 기록 · 직접 수정 가능</div>`;
       if(guide?.length)h+=`<p class="hint">참고 계획: ${guide.slice(0,12).map((row,i)=>`${i+1}. ${planRowLabel(row)}`).map(esc).join(' / ')}${guide.length>12?' …':''}</p>`;
@@ -699,7 +716,7 @@ function renderPastWorkout(k,b,nag){
     }
     h+=`</div>`;
   }
-  h+=`<div class="card" style="padding:13px"><div class="row"><label class="ef" style="flex:1;min-width:0">누락된 운동종목 추가<input id="past-ex-name" maxlength="40" placeholder="예: 벤치 프레스" autocomplete="off"></label><button class="ghost" data-act="pastaddex">추가</button></div></div>`;
+  h+=`<div class="card" style="padding:13px;display:grid;gap:9px"><button class="addex" data-act="addchoice" data-s="${esc(b.session)}">＋ 운동종목 추가 (기존 / 새로 만들기)</button><div class="row"><label class="ef" style="flex:1;min-width:0">새 운동 이름 직접 입력<input id="past-ex-name" maxlength="40" placeholder="예: 벤치 프레스" autocomplete="off"></label><button class="ghost" data-act="pastaddex">추가</button></div></div>`;
   h+=`</div><div class="memo"><label for="past-memo">${esc(k)} 운동 메모</label><textarea id="past-memo" data-act="pastmemo" placeholder="그날의 운동 메모">${esc(b.memo)}</textarea></div>`;
   $('app').innerHTML=nag+h;
 }
@@ -723,12 +740,11 @@ function renderDay(){
   // Deleted exercises may still have historical entries in today's data.
   // Do NOT show them as active workout cards: past records remain available
   // in the history tab, while the workout tab reflects the current routine.
-  const shown=act;
-  const n=act.filter(e=>b.checks[e.id]).length;
+  const shown=[...act.filter(e=>!e.archived),...act.filter(e=>e.archived)];
+  const n=shown.filter(e=>!e.archived&&b.checks[e.id]).length;
   let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div>
   <div class="workout-tools">
-    <button data-act="libraryadd" data-s="${s.id}">＋ 전체 운동에서 종목 추가</button>
-    <button data-act="newex" data-s="${s.id}">＋ 새 종목</button>
+    <button data-act="addchoice" data-s="${s.id}">＋ 운동종목 추가 (기존 / 새로 만들기)</button>
     ${k===keyOf(today())?`<button class="danger" data-act="discardtoday">오늘 운동 폐기</button>`:""}
   </div><div class="list">`;
   if(!shown.length)h+=`<p class="hint">이 세션에 종목이 없어요. 아래에서 추가해 주세요.</p>`;
@@ -740,6 +756,7 @@ function renderDay(){
     h+=`<div class="card${on?" done":""}"><div class="row">
       <button class="chk" data-act="toggle" data-ex="${id}" aria-pressed="${on}" aria-label="${esc(nm)} 완료"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
       <div class="info"><span class="name">${esc(nm)}${nm!==e.n?`<span class="orig">(${esc(e.n)} 대신)</span>`:""}${e.del?`<span class="orig">(기존 기록 보관 · 현재 루틴 제외)</span>`:""}</span><span class="meta">${meta}</span>${e.note?`<span class="note">${esc(e.note)}</span>`:""}</div>
+      <div class="day-order"><button data-act="dayup" data-ex="${id}" ${shown.indexOf(e)===0||e.archived?'disabled':''} aria-label="${esc(nm)} 순서 위로" title="이 날짜에서 위로">↑</button><button data-act="daydown" data-ex="${id}" ${shown.indexOf(e)===shown.filter(x=>!x.archived).length-1||e.archived?'disabled':''} aria-label="${esc(nm)} 순서 아래로" title="이 날짜에서 아래로">↓</button></div>
       <div class="side">${e.t!=null?`<a class="vid" href="${YT}&t=${e.t}" target="_blank" rel="noopener">▶ ${pad(Math.floor(e.t/60))}:${pad(e.t%60)}</a>`:""}
         <button class="logbtn" data-act="expand" data-ex="${id}" aria-expanded="${isOpen}">${my.length?`세트 <span class="n">${doneCount(my)}/${target}</span>`:`예정 · ${plan?plan.rows.length:target}세트`}</button></div></div>`;
     if(isOpen){
@@ -778,7 +795,7 @@ function renderDay(){
     }
     h+=`</div>`;
   }
-  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">+ 이 세션에 종목 추가</button><div class="memo"><label for="memo-${k}">메모</label><textarea id="memo-${k}" data-act="memo" placeholder="컨디션, 통증, 다음에 바꿀 점">${esc(b.memo)}</textarea></div>`;
+  h+=`</div><button class="addex" data-act="addchoice" data-s="${s.id}">＋ 운동종목 추가 (기존 / 새로 만들기)</button><div class="memo"><label for="memo-${k}">메모</label><textarea id="memo-${k}" data-act="memo" placeholder="컨디션, 통증, 다음에 바꿀 점">${esc(b.memo)}</textarea></div>`;
   app.innerHTML=nag+h;
 }
 
@@ -855,7 +872,7 @@ function renderRoutine(){
   const s=SMAP[rsel],act=activeEx(s);
   let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
   h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
-  h+=`<p class="hint">종목별로 세트 유형·중량·횟수를 바로 수정하세요. <b>저장</b>하면 다음 운동의 기본 계획에 적용됩니다. 지난 운동 기록은 변경되지 않습니다.</p>`;
+  h+=`<p class="hint">종목별 세트 유형·중량·횟수를 입력하고 <b>구성 저장</b>을 누르세요. 각 종목의 <b>↑ ↓</b>로 순서를 변경합니다. 과거 운동기록은 변경되지 않습니다.</p>`;
   h+=`<div class="routine-cards">`;
   if(!act.length)h+=`<p class="hint">종목이 없습니다. 아래의 종목 추가를 이용하세요.</p>`;
   for(let i=0;i<act.length;i++){
@@ -864,15 +881,14 @@ function renderRoutine(){
     const recent=!manually?latestExercisePlan(s.id,e.id,keyOf(today())):null;
     h+=`<section class="routine-card" data-plan-ex="${e.id}">
       <div class="routine-card-header"><div class="routine-card-title">${i+1}. ${esc(e.n)}</div>
-        <div class="routine-card-toolbar"><button data-act="up" data-ex="${e.id}" ${i===0?'disabled':''} aria-label="위로">↑</button><button data-act="down" data-ex="${e.id}" ${i===act.length-1?'disabled':''} aria-label="아래로">↓</button></div></div>
+        <div class="routine-card-toolbar"><button data-act="up" data-ex="${e.id}" ${i===0?'disabled':''} aria-label="${esc(e.n)} 위로 이동" title="위로 이동">↑</button><button data-act="down" data-ex="${e.id}" ${i===act.length-1?'disabled':''} aria-label="${esc(e.n)} 아래로 이동" title="아래로 이동">↓</button></div></div>
       <div class="routine-plan-note">${manually?'직접 설정한 기본 구성':recent?'최근 운동 기록에서 불러온 구성':'기본 구성'} · ${rows.length}세트</div>
       <div class="routine-plan-labels"><span>세트</span><span>유형</span><span>중량 kg</span><span>횟수</span><span></span></div>
       <div class="routine-plan-rows">${rows.map((r,j)=>routinePlanRowHTML(e.id,r,j)).join('')}</div>
       <div class="routine-card-actions"><button data-act="planadd" data-ex="${e.id}">＋ 세트 추가</button><button class="plan-save" data-act="plansave" data-ex="${e.id}">구성 저장</button><button data-act="editex" data-ex="${e.id}">종목 설정</button><button class="plan-delete" data-act="removeex" data-ex="${e.id}">종목 삭제</button></div>
       </section>`;
   }
-  h+=`</div><button class="addex" data-act="newex" data-s="${s.id}">＋ 새 운동종목</button>`;
-  h+=`<button class="addex" data-act="libraryadd" data-s="${s.id}">＋ 전체 운동에서 추가</button>`;
+  h+=`</div><button class="addex" data-act="addchoice" data-s="${s.id}">＋ 운동종목 추가 (기존 / 새로 만들기)</button>`;
   if(routineCustom)h+=`<button class="ghost" style="justify-self:start" data-act="resetroutine">영상 기본 루틴으로 되돌리기</button>`;
   $("app").innerHTML=h;
 }
@@ -1004,13 +1020,27 @@ function displayExerciseLibrary(){
 function openExerciseLibrary(mode,sid,replaceId){
   libraryIntent={mode,sid,replaceId};
   $("libraryTitle").textContent=mode==="editorpick"?"종목 이름 선택":mode==="replace"?"전체 운동에서 종목 변경":"전체 운동에서 종목 추가";
-  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. · v0.5.25";
+  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. · v0.5.27";
   $("librarySearch").value="";$("exerciseLibrary").hidden=false;
   displayExerciseLibrary();$("librarySearch").focus();
 }
 function chooseLibraryExercise(choiceKey){
   const intent=libraryIntent,source=libraryChoices.get(choiceKey);
   if(!intent||!source)return;
+  if(intent.mode==="pastadd"){
+    const k=intent.date, b=body(k);
+    if(k!==keyOf(view)||!b.session||b.session!==intent.sid){closeExerciseLibrary();toast('날짜가 변경됐습니다. 다시 선택하세요');return;}
+    const snap=ensurePastSnapshot(k,b);
+    if(snap.ex.some(e=>!e.archived&&librarySearchKey(e.n)===librarySearchKey(source.n))){
+      closeExerciseLibrary();toast('이 날짜에 이미 있는 운동종목입니다');return;
+    }
+    const copy=cloneDayExercise(source);
+    copy.id='historic-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+    copy.del=false;
+    snap.ex.push(copy);
+    open.add(copy.id);
+    closeExerciseLibrary();persist(k,b);toast('이 날짜에 운동을 추가했습니다');return;
+  }
   if(intent.mode==="editorpick"){
     if(!edState||edState.kind!=="ex"){
       closeExerciseLibrary();toast("종목 설정을 다시 열어 주세요");return;
@@ -1062,6 +1092,22 @@ function chooseLibraryExercise(choiceKey){
       toast("운동 변경을 저장하지 못했습니다. 다시 시도하세요.");
       return;
     }
+    // If a user adds/replaces an exercise during today's workout, append that
+    // NEW exercise to today's snapshot too; do not rewrite historical snapshots.
+    if(tab==='day'&&keyOf(view)===keyOf(today())){
+      const k=keyOf(view),day=body(k);
+      if(day.session===intent.sid){
+        if(!validDaySnapshot(day.routineSnapshot,day.session))day.routineSnapshot=makeDaySnapshot(day.session);
+        else {
+          if(intent.mode==='replace'){
+            const oldDay=day.routineSnapshot.ex.find(e=>e.id===intent.replaceId);
+            if(oldDay)oldDay.archived=true;
+          }
+          if(!day.routineSnapshot.ex.some(e=>e.id===clone.id))day.routineSnapshot.ex.push(cloneDayExercise(clone));
+        }
+        await persist(k,day);
+      }
+    }
     // Display the resulting routine in day view. Keep old historical sets intact.
     if(tab!=="day")tab="day";
     changing=false;
@@ -1103,10 +1149,75 @@ function discardSelectedDay(){
 $("libraryCancel").addEventListener("click",closeExerciseLibrary);
 $("exerciseLibrary").addEventListener("click",e=>{if(e.target===$("exerciseLibrary"))closeExerciseLibrary()});
 $("librarySearch").addEventListener("input",displayExerciseLibrary);
-function moveEx(id,dir){
-  const s=SMAP[EX[id].s],act=activeEx(s),i=act.findIndex(e=>e.id===id),j=i+dir;if(j<0||j>=act.length)return;
-  const a=s.ex.indexOf(act[i]),b=s.ex.indexOf(act[j]);[s.ex[a],s.ex[b]]=[s.ex[b],s.ex[a]];saveRoutine();
+function pendingPlanCards(){
+  return [...document.querySelectorAll('.routine-card')].filter(card=>{
+    const ex=EX[card.dataset.planEx];if(!ex)return false;
+    const rows=[...card.querySelectorAll('.routine-plan-row')].map(row=>{
+      const val=key=>row.querySelector(`[data-plan-field="${key}"]`)?.value??'';
+      return {kg:Number(val('kg')),reps:Number(val('reps')),tag:val('tag')};
+    });
+    return JSON.stringify(rows)!==JSON.stringify(routinePlanRows(ex).map(r=>({kg:Number(r.kg),reps:Number(r.reps),tag:r.tag||''})));
+  }).length>0;
 }
+let routineOrderSaving=false;
+async function moveEx(id,dir){
+  if(routineOrderSaving)return;
+  if(pendingPlanCards()){toast('먼저 변경한 세트 구성을 저장한 뒤 순서를 이동하세요');return;}
+  const ex=EX[id];if(!ex)return;
+  const s=SMAP[ex.s],act=activeEx(s),i=act.findIndex(e=>e.id===id),j=i+dir;
+  if(j<0||j>=act.length)return;
+  routineOrderSaving=true;
+  const before=routineData(),a=s.ex.indexOf(act[i]),b=s.ex.indexOf(act[j]);
+  [s.ex[a],s.ex[b]]=[s.ex[b],s.ex[a]];
+  const saved=await saveRoutine();
+  if(!saved){applyRoutine(before);render();toast('순서 저장 실패 · 이전 순서로 복원했습니다');}
+  else toast('루틴 운동 순서를 저장했습니다');
+  routineOrderSaving=false;
+}
+let dayOrderSaving=false;
+async function moveDayExercise(id,dir){
+  if(!backend||dayOrderSaving)return;
+  const k=keyOf(view),day=body(k);
+  if(!day.session){toast('먼저 세션을 선택하세요');return;}
+  // A date-owned snapshot isolates today's and historical order from routine edits.
+  const snapshot=validDaySnapshot(day.routineSnapshot,day.session)
+    ?day.routineSnapshot
+    :k<keyOf(today())?ensurePastSnapshot(k,day):makeDaySnapshot(day.session);
+  if(!snapshot)return;
+  day.routineSnapshot=snapshot;
+  const current=dayExerciseList(k,day).filter(e=>!e.archived);
+  const index=current.findIndex(e=>e.id===id),target=index+dir;
+  if(index<0||target<0||target>=current.length)return;
+  const first=snapshot.ex.findIndex(e=>e.id===current[index].id);
+  const second=snapshot.ex.findIndex(e=>e.id===current[target].id);
+  if(first<0||second<0)return;
+  [snapshot.ex[first],snapshot.ex[second]]=[snapshot.ex[second],snapshot.ex[first]];
+  dayOrderSaving=true;
+  try{await persist(k,day);toast('이 날짜의 운동 순서를 저장했습니다');}
+  finally{dayOrderSaving=false;}
+}
+let addChoiceSid=null,addChoiceDay=null;
+function openAddChoice(sid){
+  if(!SMAP[sid])return;
+  if(tab==='routine'&&pendingPlanCards()){
+    toast('먼저 세트 구성을 저장한 뒤 종목을 추가하세요');return;
+  }
+  addChoiceSid=sid;
+  addChoiceDay=tab==='day'&&keyOf(view)<keyOf(today())?keyOf(view):null;
+  $('addExerciseChoice').hidden=false;
+}
+function closeAddChoice(){addChoiceSid=null;addChoiceDay=null;$('addExerciseChoice').hidden=true;}
+$('addChoiceCancel').addEventListener('click',closeAddChoice);
+$('addExerciseChoice').addEventListener('click',event=>{if(event.target===$('addExerciseChoice'))closeAddChoice()});
+$('chooseExistingExercise').addEventListener('click',()=>{
+  const sid=addChoiceSid,day=addChoiceDay;closeAddChoice();
+  if(sid){openExerciseLibrary(day?'pastadd':'add',sid,null);if(day)libraryIntent.date=day;}
+});
+$('chooseNewExercise').addEventListener('click',()=>{
+  const sid=addChoiceSid,day=addChoiceDay;closeAddChoice();
+  if(day){const field=$('past-ex-name');if(field){field.focus();toast('운동 이름을 입력하고 옆의 추가 버튼을 눌러주세요');}return;}
+  if(sid)openEditor({kind:'ex',sid});
+});
 const REST_OPTS=[30,45,60,75,90,120,150,180,240];
 function fld(id,label,val,attrs,help){return `<label class="ef" for="${id}"><span>${label}</span><input id="${id}" value="${esc(val)}" ${attrs||""}>${help?`<small>${help}</small>`:""}</label>`}
 function openEditor(st){
@@ -1152,7 +1263,7 @@ function closeEditor(){edState=null;$("editor").hidden=true}
 function edErr(t){$("edErr").textContent=t;$("edErr").hidden=false}
 $("edCancel").addEventListener("click",closeEditor);
 $("editor").addEventListener("click",e=>{if(e.target===$("editor"))closeEditor()});
-$("edForm").addEventListener("submit",ev=>{
+$("edForm").addEventListener("submit",async ev=>{
   ev.preventDefault();if(!edState||!backend)return;const v=id=>($(id).value||"").trim();
   if(edState.kind==="sess"){const n=v("ed-sname"),sh=v("ed-sshort");if(!n||!sh){edErr("세션 이름과 짧은 이름을 모두 입력해 주세요.");return}
     const s=SMAP[edState.sid];s.name=n;s.short=sh;closeEditor();saveRoutine();toast("세션 이름을 바꿨어요");return}
@@ -1165,9 +1276,25 @@ $("edForm").addEventListener("submit",ev=>{
   const tS=v("ed-t");let t=null;if(tS){const m=tS.match(/^(\d{1,2}):?(\d{2})$/);if(!m||Number(m[2])>59){edErr("영상 위치는 07:20처럼 분:초로 넣어 주세요.");return}t=Number(m[1])*60+Number(m[2])}
   const setsN=Number(v("ed-sets")||3);if(!okInt(setsN,1,10)){edErr("목표 세트 수는 1~10 사이 정수로 넣어 주세요.");return}
   const fields={sets:setsN,top:Number($("ed-top").value)||0,n,tgt:v("ed-tgt"),part:v("ed-part"),note:v("ed-note"),r,inc,rest:Number($("ed-rest").value)||90,t,alts:v("ed-alts").split(/[,，]/).map(x=>x.trim()).filter(x=>x&&x!==n)};
-  if(edState.id){Object.assign(EX[edState.id],fields);toast("종목을 수정했어요")}
-  else{const id="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);SMAP[sid].ex.push({id,...fields});toast(`${n}을(를) 추가했어요`)}
-  closeEditor();saveRoutine();
+  const before=routineData();
+  let added=null;
+  if(edState.id){Object.assign(EX[edState.id],fields)}
+  else{
+    added={id:newRoutineExerciseId(),...fields};
+    SMAP[sid].ex.push(added);
+  }
+  closeEditor();
+  const saved=await saveRoutine();
+  if(!saved){applyRoutine(before);render();toast('종목 저장에 실패했습니다. 다시 시도하세요');return;}
+  if(added&&tab==='day'&&keyOf(view)===keyOf(today())){
+    const k=keyOf(view),day=body(k);
+    if(day.session===sid){
+      if(!validDaySnapshot(day.routineSnapshot,day.session))day.routineSnapshot=makeDaySnapshot(day.session);
+      else day.routineSnapshot.ex.push(cloneDayExercise(added));
+      await persist(k,day);
+    }
+  }
+  toast(added?`${n}을(를) 추가했습니다`:'종목 설정을 저장했습니다');
 });
 $("edDel").addEventListener("click",()=>{
   if(!edState||!edState.id)return;
@@ -1353,10 +1480,15 @@ document.addEventListener("click",ev=>{
   if(k<keyOf(today())&&tab==="day"){
     const allowed=['tab','prev','next','today','day','export','snooze',
       'pick','unset','change','cancelchange','expand','pastchangesession','pastpick','pastcancelchange','pastaddex','pastremoveex',
-      'pasttoggle','pastaddset','pastdelset','pasttag','pastrest'];
+      'pasttoggle','pastaddset','pastdelset','pasttag','pastrest','dayup','daydown','addchoice'];
     if(!allowed.includes(act)){toast('지난 날짜는 그날의 운동기록만 수정할 수 있습니다');return;}
   }
-  if(act==="tab"){tab=t.dataset.t;changing=false;render();window.scrollTo(0,0);return}
+  if(act==="dayup"||act==="daydown"){
+    moveDayExercise(id,act==="dayup"?-1:1);return;
+  }
+  if(act==="tab"){
+    if(tab==='routine'&&pendingPlanCards()){toast('저장하지 않은 세트 구성이 있습니다. 구성 저장 후 이동하세요');return;}
+    tab=t.dataset.t;changing=false;render();window.scrollTo(0,0);return}
   if(act==="prev"||act==="next"){view=addDays(view,act==="prev"?-7:7);open.clear();changing=false;render();return}
   if(act==="today"){view=today();open.clear();changing=false;render();return}
   if(act==="day"){view=parseKey(t.dataset.k);open.clear();changing=false;render();return}
@@ -1476,9 +1608,12 @@ document.addEventListener("click",ev=>{
   if(act==="planadd"){changePlanRows(id,null);return}
   if(act==="planremove"){changePlanRows(id,Number(t.dataset.i));return}
   if(act==="plansave"){if(backend)savePlanCard(id);return}
-  if(act==="rsel"){rsel=t.dataset.s;render();return}
+  if(act==="rsel"){
+    if(pendingPlanCards()){toast('저장하지 않은 세트 구성이 있습니다. 구성 저장 후 루틴을 바꾸세요');return;}
+    rsel=t.dataset.s;render();return}
   if(act==="editsess"){openEditor({kind:"sess",sid:rsel});return}
   if(act==="editex"){openEditor({kind:"ex",id});return}
+  if(act==="addchoice"){openAddChoice(t.dataset.s||rsel);return}
   if(act==="newex"){openEditor({kind:"ex",sid:t.dataset.s||rsel});return}
   if(act==="libraryadd"){openExerciseLibrary("add",t.dataset.s||rsel,null);return}
   if(act==="libraryreplace"){const ex=EX[id];if(ex)openExerciseLibrary("replace",ex.s,id);return}
