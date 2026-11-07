@@ -1073,6 +1073,24 @@ function libraryEntries(){
   };
   for(const sess of SESS)addSession(sess,"현재 루틴");
   for(const sess of SESS_DEFAULT)addSession(sess,"기본 루틴");
+  // A user-created exercise can exist only in a historical/day snapshot.
+  // Include it too, even after it has been removed from every active routine.
+  // Use stable IDs rather than dates to avoid hundreds of duplicate entries.
+  for(const [date,b] of Object.entries(docs||{})){
+    if(!b||!b.session)continue;
+    const snap=b.routineSnapshot;
+    if(validDaySnapshot(snap,b.session))for(const ex of snap.ex){
+      if(!ex||!ex.id||!ex.n)continue;
+      add(ex,(SMAP[b.session]?.short||b.session),"기록 보관","history:"+ex.id);
+    }
+    // Older records may only retain their alternate/new name in day.alts.
+    for(const [id,name] of Object.entries(b.alts||{})){
+      if(typeof name!=="string"||!name.trim())continue;
+      const template=(snap?.ex||[]).find(ex=>ex.id===id)||EX[id]||DEFMAP[id]||{};
+      add({...template,id,n:name.trim(),del:false},
+          (SMAP[b.session]?.short||b.session),"과거 사용자 종목","history-alt:"+id);
+    }
+  }
   return items.sort((a,b)=>a.exercise.n.localeCompare(b.exercise.n,"ko")||a.session.localeCompare(b.session,"ko"));
 }
 /** A fresh ID for every library copy. Avoid reusing the ID of an exercise in
@@ -1117,7 +1135,7 @@ function displayExerciseLibrary(){
 function openExerciseLibrary(mode,sid,replaceId){
   libraryIntent={mode,sid,replaceId};
   $("libraryTitle").textContent=mode==="editorpick"?"종목 이름 선택":mode==="replace"?"전체 운동에서 종목 변경":"전체 운동에서 종목 추가";
-  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. · v0.5.27";
+  $("libraryHint").textContent="전체 루틴 · 대체 운동 · 숨긴 종목 · 과거에 새로 만든 종목 검색 · v0.5.29";
   $("librarySearch").value="";$("exerciseLibrary").hidden=false;
   displayExerciseLibrary();$("librarySearch").focus();
 }
