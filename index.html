@@ -424,6 +424,39 @@ function applyRoutine(r){
 }
 function routineData(){return {v:1,sessions:SESS.map(x=>({id:x.id,name:x.name,short:x.short,ex:x.ex.map(e=>{const o={id:e.id,n:e.n,tgt:e.tgt,part:e.part,note:e.note,t:e.t,r:e.r,inc:e.inc,rest:e.rest,alts:e.alts,sets:e.sets,top:e.top};if(e.del)o.del=true;if(Array.isArray(e.plan))o.plan=e.plan;return o})}))}}
 const activeEx=x=>x.ex.filter(e=>!e.del);
+// A date-owned copy of the exercises and their order. Editing a routine later
+// must never change a workout already started on another date.
+const cloneDayExercise=e=>({id:e.id,n:e.n,tgt:e.tgt||"",part:e.part||"",note:e.note||"",rest:e.rest||90,
+  sets:e.sets||3,top:e.top||0,r:e.r||null,inc:e.inc||0,alts:Array.isArray(e.alts)?[...e.alts]:[],
+  plan:Array.isArray(e.plan)?e.plan.map(q=>({...q})):null,t:e.t??null});
+function makeDaySnapshot(sid){
+  const s=SMAP[sid];
+  return s?{v:1,session:sid,name:s.name,ex:activeEx(s).map(cloneDayExercise)}:null;
+}
+function validDaySnapshot(snapshot,sid){
+  return snapshot&&snapshot.v===1&&snapshot.session===sid&&Array.isArray(snapshot.ex)&&snapshot.ex.length<=100;
+}
+function snapshotExercises(b){
+  if(!b||!b.session)return null;
+  if(!validDaySnapshot(b.routineSnapshot,b.session))return null;
+  return b.routineSnapshot.ex.filter(e=>e&&e.id&&e.n).map(e=>({...e,s:b.session,del:false}));
+}
+function dayExerciseList(k,b){
+  const snapshot=snapshotExercises(b);
+  if(snapshot)return snapshot;
+  // Legacy days have no snapshot. Reconstruct ONLY exercises with recorded
+  // sets/completion; do not substitute the current routine as if it were history.
+  if(k<keyOf(today())){
+    const ids=[...new Set([...Object.keys(b.sets||{}),...Object.keys(b.checks||{})])];
+    return ids.map(id=>{
+      const ex=EX[id]||DEFMAP[id];
+      return ex?{...cloneDayExercise(ex),s:b.session,del:false}:{id,n:(b.alts||{})[id]||`이전 운동 (${id})`,s:b.session,rest:90,sets:3,top:0,alts:[],plan:null,t:null};
+    });
+  }
+  return activeEx(SMAP[b.session]);
+}
+function historicalExerciseName(e,b){return (b.alts&&b.alts[e.id])||e.n;}
+
 applyRoutine(null);
 const PREFIX={m:"A",t:"B",w:"C",f:"D",s:"E"}; // 예전(요일 고정) 기록의 종목 id → 세션
 const DOW=["일","월","화","수","목","금","토"];
@@ -453,6 +486,8 @@ const fmtSet=t=>t.kg>0?`${fmt(t.kg)}kg × ${t.reps||"-"}`:`${t.reps||"-"}회`;
 function norm(b){
   b=b&&typeof b==="object"?b:{};
   const o={session:SMAP[b.session]?b.session:null,checks:{...(b.checks||{})},sets:JSON.parse(JSON.stringify(b.sets||{})),alts:{...(b.alts||{})},memo:typeof b.memo==="string"?b.memo:""};
+  if(validDaySnapshot(b.routineSnapshot,o.session))
+    o.routineSnapshot=JSON.parse(JSON.stringify(b.routineSnapshot));
   if(!o.session){for(const id of [...Object.keys(o.checks),...Object.keys(o.sets)]){if(EX[id]&&PREFIX[id[0]]){o.session=PREFIX[id[0]];break}}}
   return o;
 }
@@ -502,7 +537,7 @@ const isPR=(x,base)=>base.has&&x.tag!=="W"&&num(x.kg)>0&&num(x.reps)>0&&(num(x.k
 function nextSession(k){for(let i=KEYS.length-1;i>=0;i--){const x=KEYS[i];if(x<k&&docs[x].session)return ORDER[(ORDER.indexOf(docs[x].session)+1)%ORDER.length]}return ORDER[0]}
 function lastDone(sid,k){for(let i=KEYS.length-1;i>=0;i--){const x=KEYS[i];if(x<k&&docs[x].session===sid)return x}return null}
 function streak(k){let d=addDays(parseKey(k),-1),n=0;while(docs[keyOf(d)]&&docs[keyOf(d)].session){n++;d=addDays(d,-1)}return n}
-function dayDone(k){const b=docs[k];if(!b||!b.session)return 0;const ex=activeEx(SMAP[b.session]);return ex.length?ex.filter(e=>b.checks[e.id]).length/ex.length:0}
+function dayDone(k){const b=docs[k];if(!b||!b.session)return 0;const ex=dayExerciseList(k,b);return ex.length?ex.filter(e=>b.checks[e.id]).length/ex.length:0}
 
 // ---------- 화면 ----------
 function render(){
@@ -593,10 +628,40 @@ function backupNag(){
   const since=last||parseKey(KEYS[0]).getTime();if(now-since<14*864e5)return "";
   return `<div class="nag"><span>${last?`마지막 백업이 ${Math.floor((now-last)/864e5)}일 전이에요.`:"아직 백업한 적이 없어요."} 기록은 이 휴대폰에만 있어서 백업해 두는 게 안전해요.</span><button class="go" data-act="export">지금 백업</button><button data-act="snooze">3일 뒤에</button></div>`;
 }
+// Historical days must not offer exercise/routine editing controls. Archived
+// snapshots retain original order and names even after routine replacement.
+function renderPastWorkout(k,b,nag){
+  const s=SMAP[b.session],snapshot=b.routineSnapshot;
+  const items=dayExerciseList(k,b);
+  const completed=items.filter(e=>b.checks[e.id]).length;
+  const title=validDaySnapshot(snapshot,b.session)?snapshot.name:(s?s.name:b.session);
+  let h=`<div class="dayhead" style="--c:var(${s?s.c:'--p-rest'})"><span class="k">${dayLabel(view)}</span><h2>${esc(title)}</h2><span class="prog"><b>${completed}/${items.length}</b> 종목 완료</span></div>`;
+  h+=`<div class="sec"><p class="hint">🔒 과거 운동은 읽기 전용입니다. 루틴을 나중에 수정해도 이 날의 세트 기록은 변경되지 않습니다.</p>`;
+  if(!validDaySnapshot(snapshot,b.session))h+=`<p class="hint">이 날짜는 이전 버전의 기록이어서 당시 전체 루틴 정보가 없습니다. 저장된 세트·완료 종목만 보여줍니다.</p>`;
+  if(!items.length)h+=`<p class="hint">저장된 운동종목이 없습니다.</p>`;
+  for(const e of items){
+    const rows=Array.isArray((b.sets||{})[e.id])?b.sets[e.id]:[];
+    const title=historicalExerciseName(e,b);
+    const done=b.checks&&b.checks[e.id];
+    h+=`<div class="card${done?' done':''}"><div class="row"><span style="font-size:22px;color:${done?'var(--accent)':'var(--muted)'}">${done?'✓':'○'}</span><div class="info"><span class="name">${esc(title)}</span><span class="meta">${rows.length}세트 기록${e.tgt?' · '+esc(e.tgt):''}</span></div></div>`;
+    if(rows.length){h+=`<div class="sets">`;
+      rows.forEach((r,i)=>{h+=`<div class="set-previous" style="padding:7px 1px;border-top:1px solid var(--line)">${i+1}세트${r.tag?' · '+esc(TAG[r.tag]||r.tag):''}　<b>${esc(fmtSet(r))}</b></div>`});
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+  }
+  h+=`</div>`;
+  if(b.memo)h+=`<div class="memo"><label>당시 메모</label><p>${esc(b.memo)}</p></div>`;
+  $("app").innerHTML=nag+h;
+}
 function renderDay(){
   const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
+  if(k<keyOf(today())){
+    if(!b.session){app.innerHTML=nag+`<p class="hint">이 날은 휴식일입니다. 과거 날짜는 수정할 수 없습니다.</p>`;return;}
+    renderPastWorkout(k,b,nag);return;
+  }
   if(!b.session||changing){app.innerHTML=nag+renderPicker(k,b);return}
-  const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s),sessionSnapshot=previousSessionSnapshot(b.session,k);
+  const s=SMAP[b.session],idx=buildIndex(),act=dayExerciseList(k,b),sessionSnapshot=previousSessionSnapshot(b.session,k);
   // Show active routine items first, in their current order. Historical records
   // for removed items are available below, separately marked as archived.
   // Deleted exercises may still have historical entries in today's data.
@@ -1035,6 +1100,8 @@ $("sheet").addEventListener("click",e=>{if(e.target===$("sheet")){sheetCb=null;$
 $("sheetYes").addEventListener("click",()=>{const cb=sheetCb;sheetCb=null;$("sheet").hidden=true;cb&&cb()});
 
 async function persist(k,b,quiet){
+  if(b.session&&k>=keyOf(today())&&!validDaySnapshot(b.routineSnapshot,b.session))
+    b.routineSnapshot=makeDaySnapshot(b.session);
   if(isEmpty(b))delete docs[k];else docs[k]=b;
   if(quiet)pendingRender=true;else render();
   try{await backend.save(k,b);syncQueueDay(k,b);if(!IS_PWA&&backend.local)setStatus("이 브라우저에만 저장 중");else setStatus("")}
@@ -1175,6 +1242,10 @@ function autoCheck(b,id,before){const e=EX[id],after=doneCount(b.sets[id]),goal=
 document.addEventListener("click",ev=>{
   const t=ev.target.closest("[data-act]");if(!t||t.tagName==="INPUT"||t.tagName==="TEXTAREA")return;
   const act=t.dataset.act,id=t.dataset.ex,k=keyOf(view);
+  // Historical dates are strictly read-only, including on stale DOM events.
+  if(k<keyOf(today())&&tab==="day"&&!['tab','prev','next','today','day','export'].includes(act)){
+    toast("지난 운동기록은 수정할 수 없습니다");return;
+  }
   if(act==="tab"){tab=t.dataset.t;changing=false;render();window.scrollTo(0,0);return}
   if(act==="prev"||act==="next"){view=addDays(view,act==="prev"?-7:7);open.clear();changing=false;render();return}
   if(act==="today"){view=today();open.clear();changing=false;render();return}
@@ -1209,7 +1280,7 @@ document.addEventListener("click",ev=>{
     const sid=t.dataset.s;
     if(b.session===sid){changing=false;render();return}
     const c=dataCount(b);
-    const apply=()=>{const nb=norm(null);nb.memo=b.memo;nb.session=sid;changing=false;open.clear();persist(k,nb)};
+    const apply=()=>{const nb=norm(null);nb.memo=b.memo;nb.session=sid;nb.routineSnapshot=makeDaySnapshot(sid);changing=false;open.clear();persist(k,nb)};
     if(b.session&&(c.sets||c.checks))ask(`${SMAP[b.session].name}에 기록한 ${c.sets}세트와 완료 체크 ${c.checks}개가 지워져요. ${SMAP[sid].name}(으)로 바꿀까요?`,"바꾸기",apply);else apply();
     return;
   }
@@ -1265,6 +1336,9 @@ document.addEventListener("click",ev=>{
 document.addEventListener("change",ev=>{
   const t=ev.target;if(!backend||!t.dataset)return;
   const k=keyOf(view);
+  if(k<keyOf(today())&&tab==="day"){
+    toast("지난 운동기록은 수정할 수 없습니다");return;
+  }
   if(t.dataset.act==="memo"){const b=body(k),v=t.value.slice(0,2000);if(b.memo===v)return;b.memo=v;if(!b.session&&!v)return;persist(k,b,true);return}
   if(t.dataset.act!=="kg"&&t.dataset.act!=="reps")return;
   const b=body(k),id=t.dataset.ex,list=b.sets[id]||[],s=list[Number(t.dataset.i)];if(!s)return;
