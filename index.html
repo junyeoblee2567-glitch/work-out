@@ -203,7 +203,7 @@ body.timing main .wrap{padding-bottom:120px}
 .tbar.done{background:var(--done)}
 .sheetbg{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.4);display:grid;align-items:end}
 .sheet{background:var(--surface);border-radius:16px 16px 0 0;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:14px;max-width:640px;width:100%;margin:0 auto}
-.sheet p{margin:0;font-size:15px}
+.sheet p{margin:0;font-size:15px;white-space:pre-line}
 .sheet .btns{display:flex;gap:8px;justify-content:flex-end;align-items:center}
 .sheet.ed{max-height:88vh;overflow-y:auto;gap:12px;border-radius:16px 16px 0 0}
 .sheet h3{margin:0;font-size:17px}
@@ -687,10 +687,11 @@ function renderPastWorkout(k,b,nag){
     h+=`</div><div class="rowbtns"><button class="ghost" data-act="pastrest">운동 안 함 (휴식)</button><button class="ghost" data-act="pastcancelchange">취소</button></div></section>`;
     $('app').innerHTML=nag+h;return;
   }
-  h+=`<div class="sec"><p class="hint">✎ 지난 운동 기록을 수정하는 중입니다. 중량·횟수 변경, 세트 추가·삭제는 <b>${esc(k)}</b>에만 적용됩니다. 현재 기본 루틴은 바뀌지 않습니다.</p>`;
+  h+=`<div class="sec"><p class="hint">✎ 지난 운동 기록을 수정하는 중입니다. 중량·횟수 변경, 세트 추가·삭제는 <b>${esc(k)}</b>에만 적용됩니다. 기본 루틴은 별도로 확인 후 반영할 수 있습니다.</p>`;
   if(!validDaySnapshot(snapshot,b.session))h+=`<p class="hint">이 날짜는 옛 버전의 기록입니다. 수행한 종목만 복원할 수 있습니다. 세션 변경 시 선택한 루틴을 그날의 계획으로 새로 불러올 수 있습니다.</p>`;
   if(snapshot&&snapshot.createdForPast)h+=`<p class="hint">기록 누락일에 현재 루틴을 참고해 생성한 목록입니다. 당시 수행한 내용에 맞게 고쳐 입력하세요.</p>`;
   if(snapshot&&snapshot.sessionCorrected)h+=`<p class="hint">세션을 수정한 과거 기록입니다. 이전에 저장된 운동종목과 세트는 그대로 유지됩니다.</p>`;
+  if(hasRecordedSets(b))h+=`<div class="workout-tools"><button data-act="applyrecordtoroutine">이 날짜의 운동기록으로 기본 루틴 업데이트</button></div>`;
   if(!items.length)h+=`<p class="hint">등록된 운동이 없습니다. 아래에서 종목을 추가하세요.</p>`;
   let archiveHeadingShown=false;
   for(const e of items){
@@ -744,6 +745,7 @@ function renderDay(){
   const n=shown.filter(e=>!e.archived&&b.checks[e.id]).length;
   let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div>
   <div class="workout-tools">
+    ${hasRecordedSets(b)?`<button data-act="applyrecordtoroutine">오늘 기록으로 기본 루틴 업데이트</button>`:""}
     <button data-act="addchoice" data-s="${s.id}">＋ 운동종목 추가 (기존 / 새로 만들기)</button>
     ${k===keyOf(today())?`<button class="danger" data-act="discardtoday">오늘 운동 폐기</button>`:""}
   </div><div class="list">`;
@@ -872,7 +874,7 @@ function renderRoutine(){
   const s=SMAP[rsel],act=activeEx(s);
   let h=`<div class="rsess" role="tablist">${SESS.map(x=>`<button class="rs${x.id===rsel?" on":""}" style="--c:var(${x.c})" data-act="rsel" data-s="${x.id}" aria-selected="${x.id===rsel}">${esc(x.short)}</button>`).join("")}</div>`;
   h+=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${ORDER.indexOf(s.id)+1}번째 세션 · 순서대로 돌아가요</span><h2>${esc(s.name)}</h2><span class="prog"><b>${act.length}</b>종목</span><button class="chg" data-act="editsess">이름 바꾸기</button></div>`;
-  h+=`<p class="hint">종목별 세트 유형·중량·횟수를 입력하고 <b>구성 저장</b>을 누르세요. 각 종목의 <b>↑ ↓</b>로 순서를 변경합니다. 과거 운동기록은 변경되지 않습니다.</p>`;
+  h+=`<p class="hint">종목별 세트 유형·중량·횟수를 입력하고 <b>구성 저장</b>을 누르세요. 각 종목의 <b>↑ ↓</b>로 순서를 변경합니다. 과거 운동기록은 변경되지 않습니다. 운동기록 화면의 ‘루틴 업데이트’에서 실제 수행 결과를 확인 후 기본 루틴에 반영할 수도 있습니다.</p>`;
   h+=`<div class="routine-cards">`;
   if(!act.length)h+=`<p class="hint">종목이 없습니다. 아래의 종목 추가를 이용하세요.</p>`;
   for(let i=0;i<act.length;i++){
@@ -929,6 +931,101 @@ function changePlanRows(id,removeIndex){
   card.querySelector('.routine-plan-note').textContent=`편집 중 · ${rows.length}세트 (구성 저장을 눌러 적용)`;
 }
 
+// ---------- 날짜별 실제 기록 → 기본 루틴 (사용자 확인 후에만) ----------
+function hasRecordedSets(b){
+  return !!(b&&b.session&&Object.values(b.sets||{}).some(rows=>Array.isArray(rows)&&rows.some(r=>r&&Number(r.reps)>0&&Number.isFinite(Number(r.kg))&&Number(r.kg)>=0)));
+}
+function routineUpdateSignature(k,b){
+  const checked=Object.keys(b.checks||{}).filter(id=>b.checks[id]).sort();
+  return JSON.stringify({day:k,session:b.session,checked,sets:b.sets||{},snapshot:b.routineSnapshot?.ex?.map(e=>[e.id,e.n,e.archived])||[]});
+}
+function laterWorkoutDates(sid,k){
+  return Object.keys(docs).filter(x=>x>k&&docs[x]&&docs[x].session===sid&&hasRecordedSets(docs[x])).sort();
+}
+// Build a candidate without changing the current routine or past records.
+// Date-owned snapshot defines order and membership; legacy dates only contain recorded exercises.
+function buildRoutineFromDay(k,b){
+  if(!b.session||!SMAP[b.session]||!hasRecordedSets(b))throw Error('실제 수행한 세트 기록이 없습니다');
+  const sid=b.session,current=SMAP[sid],source=dayExerciseList(k,b).filter(e=>!e.archived);
+  if(!source.length)throw Error('이 날짜에 불러올 운동종목이 없습니다');
+  const previous=routineData();
+  const updated=JSON.parse(JSON.stringify(previous));
+  const dest=updated.sessions.find(x=>x.id===sid);
+  const existing=new Map(current.ex.map(e=>[e.id,e]));
+  const matched=new Set(),next=[];
+  const fullSnapshot=validDaySnapshot(b.routineSnapshot,sid);
+  for(const old of source){
+    const rows=b.sets?.[old.id];
+    const performed=Array.isArray(rows)?rows.filter(x=>x&&Number(x.reps)>0&&Number.isFinite(Number(x.kg))&&Number(x.kg)>=0):[];
+    const prior=existing.get(old.id)||current.ex.find(e=>!matched.has(e.id)&&e.n===old.n);
+    // Copy a historical exercise ID from another routine as an independent ID.
+    const foreign=SESS.some(s=>s.id!==sid&&s.ex.some(e=>e.id===old.id));
+    const reuse=prior&&!matched.has(prior.id);
+    const id=reuse?prior.id:foreign?newRoutineExerciseId():old.id;
+    if(matched.has(id))continue;
+    matched.add(id);
+    const template=prior||old;
+    const record={
+      id,n:String(old.n||template.n||'새 운동').slice(0,40),
+      tgt:template.tgt||'',part:template.part||'',note:template.note||'',
+      t:template.t??null,r:template.r||null,inc:template.inc||0,
+      rest:template.rest||90,alts:Array.isArray(template.alts)?[...template.alts]:[],
+      sets:template.sets||3,top:template.top||0
+    };
+    if(performed.length){
+      record.plan=performed.slice(0,30).map(x=>({kg:Number(x.kg),reps:Number(x.reps),tag:['','W','T','B','D'].includes(x.tag)?x.tag:''}));
+      record.sets=Math.min(10,record.plan.length);
+      record.top=Math.min(3,record.plan.filter(x=>x.tag==='T').length);
+    }else if(Array.isArray(template.plan)&&template.plan.length){
+      record.plan=template.plan.map(x=>({...x}));
+    }
+    next.push(record);
+  }
+  // Preserve excluded exercises as hidden to keep their identity/history available.
+  // Legacy dates lack a complete snapshot, so do not infer that missing exercises were deleted.
+  for(const ex of current.ex){
+    if(matched.has(ex.id))continue;
+    next.push({...cloneDayExercise(ex),del:fullSnapshot||!!ex.del});
+  }
+  dest.ex=next;
+  return {updated,changed:next.filter(e=>!e.del).length,performed:next.filter(e=>Array.isArray(e.plan)&&e.plan.length).length};
+}
+let routineUpdateSaving=false;
+async function applyDayAsRoutine(k){
+  if(routineUpdateSaving)return;
+  const b=body(k);
+  let candidate;
+  try{candidate=buildRoutineFromDay(k,b)}catch(e){toast(e.message||'루틴 구성을 생성하지 못했습니다');return;}
+  if(!backend){toast('저장소 연결을 먼저 확인하세요');return;}
+  routineUpdateSaving=true;
+  try{
+    await backend.saveRoutine(candidate.updated);
+    applyRoutine(candidate.updated);
+    syncQueueRoutine();
+    try{localStorage.setItem('split3-routine-apply-'+k,routineUpdateSignature(k,b));localStorage.setItem('split3-routine-prompt-'+k,routineUpdateSignature(k,b))}catch(e){}
+    toast(`${SMAP[b.session].name} 기본 루틴을 ${k} 기록으로 업데이트했습니다`);
+    render();
+  }catch(e){setStatus('기본 루틴 저장 실패. 기존 루틴을 유지합니다.',true);toast('루틴을 저장하지 못했습니다')}
+  finally{routineUpdateSaving=false;}
+}
+function offerDayRoutineUpdate(k,automatic=false){
+  const b=body(k);
+  if(!hasRecordedSets(b)){toast('먼저 실제 수행한 세트를 기록해 주세요');return;}
+  const later=laterWorkoutDates(b.session,k);
+  const oldWarning=later.length?`\n주의: ${later[later.length-1]}에 더 최근 같은 부위 운동이 있습니다. 그래도 ${k} 기록으로 기본 루틴을 교체합니다.`:'';
+  const content=`${k}에 기록한 ${SMAP[b.session].name} 운동의 종목 순서와 실제 수행한 세트 유형·중량·횟수를 앞으로의 기본 루틴에 반영할까요?\n\n과거 날짜 기록은 변경하지 않습니다. 직접 저장했던 기본 세트 계획은 해당 종목에 한해 교체됩니다.${oldWarning}`;
+  ask(content,'루틴 업데이트',()=>applyDayAsRoutine(k),'기존 루틴 유지');
+}
+// Don't interrupt every set entry. Ask when the day's last active exercise is checked.
+function maybeOfferCompletedRoutine(k){
+  const b=body(k);
+  if(!hasRecordedSets(b))return;
+  const active=dayExerciseList(k,b).filter(e=>!e.archived);
+  if(!active.length||!active.every(e=>!!b.checks[e.id]))return;
+  const sig=routineUpdateSignature(k,b),key='split3-routine-prompt-'+k;
+  try{if(localStorage.getItem(key)===sig)return;localStorage.setItem(key,sig)}catch(e){}
+  offerDayRoutineUpdate(k,true);
+}
 function hasData(id){for(const k of KEYS){const b=docs[k];if(b.sets[id]||b.checks[id]||b.alts[id])return true}return false}
 async function saveRoutine(reset){
   const r=reset?null:routineData();
@@ -1315,7 +1412,7 @@ function setStatus(t,err){const s=$("status");s.textContent=t||"";s.className="s
 let toastTimer;
 function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,2600)}
 let sheetCb=null;
-function ask(text,okLabel,cb){$("sheetText").textContent=text;$("sheetYes").textContent=okLabel;sheetCb=cb;$("sheet").hidden=false;$("sheetYes").focus()}
+function ask(text,okLabel,cb,cancelLabel){$("sheetText").textContent=text;$("sheetYes").textContent=okLabel;$("sheetNo").textContent=cancelLabel||"취소";sheetCb=cb;$("sheet").hidden=false;$("sheetYes").focus()}
 $("sheetNo").addEventListener("click",()=>{sheetCb=null;$("sheet").hidden=true});
 $("sheet").addEventListener("click",e=>{if(e.target===$("sheet")){sheetCb=null;$("sheet").hidden=true}});
 $("sheetYes").addEventListener("click",()=>{const cb=sheetCb;sheetCb=null;$("sheet").hidden=true;cb&&cb()});
@@ -1325,8 +1422,8 @@ async function persist(k,b,quiet){
     b.routineSnapshot=makeDaySnapshot(b.session);
   if(isEmpty(b))delete docs[k];else docs[k]=b;
   if(quiet)pendingRender=true;else render();
-  try{await backend.save(k,b);syncQueueDay(k,b);if(!IS_PWA&&backend.local)setStatus("이 브라우저에만 저장 중");else setStatus("")}
-  catch(e){setStatus(e&&e.code==="quota_exceeded"?"저장 공간이 가득 찼어요. 오래된 기록을 지워 주세요.":"저장하지 못했어요. 잠시 후 다시 입력해 주세요.",true)}
+  try{await backend.save(k,b);syncQueueDay(k,b);if(!IS_PWA&&backend.local)setStatus("이 브라우저에만 저장 중");else setStatus("");return true}
+  catch(e){setStatus(e&&e.code==="quota_exceeded"?"저장 공간이 가득 찼어요. 오래된 기록을 지워 주세요.":"저장하지 못했어요. 잠시 후 다시 입력해 주세요.",true);return false}
 }
 function localBackend(){
   const KEY="split3-log";let raw={};
@@ -1480,8 +1577,12 @@ document.addEventListener("click",ev=>{
   if(k<keyOf(today())&&tab==="day"){
     const allowed=['tab','prev','next','today','day','export','snooze',
       'pick','unset','change','cancelchange','expand','pastchangesession','pastpick','pastcancelchange','pastaddex','pastremoveex',
-      'pasttoggle','pastaddset','pastdelset','pasttag','pastrest','dayup','daydown','addchoice'];
+      'pasttoggle','pastaddset','pastdelset','pasttag','pastrest','dayup','daydown','addchoice','applyrecordtoroutine'];
     if(!allowed.includes(act)){toast('지난 날짜는 그날의 운동기록만 수정할 수 있습니다');return;}
+  }
+  if(act==="applyrecordtoroutine"){
+    if(pendingPlanCards()&&tab==='routine'){toast('세트 계획을 먼저 저장하세요');return;}
+    offerDayRoutineUpdate(k);return;
   }
   if(act==="dayup"||act==="daydown"){
     moveDayExercise(id,act==="dayup"?-1:1);return;
@@ -1568,7 +1669,7 @@ document.addEventListener("click",ev=>{
     ensurePastSnapshot(k,b);
     if(act==="pasttoggle"){
       if(b.checks[id])delete b.checks[id];else b.checks[id]=true;
-      persist(k,b);return;
+      persist(k,b).then(ok=>{if(ok&&b.checks[id])maybeOfferCompletedRoutine(k)});return;
     }
     if(act==="pastaddset"){
       const list=b.sets[id]||(b.sets[id]=[]);
@@ -1644,7 +1745,7 @@ document.addEventListener("click",ev=>{
     if(c.sets||c.checks)ask(`이 날 기록한 ${c.sets}세트와 완료 체크 ${c.checks}개가 지워져요. 휴식으로 바꿀까요?`,"휴식으로",apply);else apply();
     return;
   }
-  if(act==="toggle"){if(b.checks[id])delete b.checks[id];else b.checks[id]=true;persist(k,b);return}
+  if(act==="toggle"){if(b.checks[id])delete b.checks[id];else b.checks[id]=true;persist(k,b).then(ok=>{if(ok&&b.checks[id])maybeOfferCompletedRoutine(k)});return}
   if(act==="loadplanned"){
     const e=EX[id],plan=e&&latestExercisePlan(e.s,id,k),index=Number(t.dataset.i);
     if(!plan||!Number.isInteger(index)||index<0||index>=plan.rows.length)return;
@@ -1719,7 +1820,7 @@ document.addEventListener("change",ev=>{
   const nm=exName(id,b),base=prBase(nm,k,buildIndex()),wasPR=isPR(s,base),before=doneCount(list);
   s[t.dataset.act]=n;
   const nowPR=isPR(s,base),done=autoCheck(b,id,before);
-  persist(k,b,true);
+  persist(k,b,true).then(ok=>{if(ok&&done)maybeOfferCompletedRoutine(k)});
   if(nowPR&&!wasPR)toast(`신기록! ${nm} ${fmtSet({kg:num(s.kg),reps:num(s.reps)})}${done?` · ${exerciseGoal(EX[id],k)}세트 완료`:""}`);
   else if(done)toast(`${nm} ${exerciseGoal(EX[id],k)}세트 완료`);
   if(t.dataset.act==="reps"&&n>0&&s.tag!=="W"){
