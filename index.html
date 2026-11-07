@@ -246,6 +246,7 @@ footer a{color:var(--muted)}
 .library-panel p{margin:0 0 10px;font-size:12px;color:var(--muted)}
 .library-panel input{width:100%;box-sizing:border-box;margin:5px 0 10px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
 .library-items{display:grid;gap:6px;max-height:50dvh;overflow:auto}
+.library-count{margin:0 0 5px!important;font-size:11px!important;color:var(--muted)}
 .library-items button{border:1px solid var(--line);border-radius:10px;padding:11px;text-align:left;background:var(--bg);color:var(--ink);font:inherit}
 .library-items small{display:block;font-size:11px;margin-top:3px;color:var(--muted)}
 .library-cancel{margin-top:12px;padding:11px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
@@ -673,49 +674,81 @@ async function saveRoutine(reset){
 }
 // ----- 운동 화면에서도 접근 가능한 전체 종목 관리 -----
 let libraryIntent=null;
-function newRoutineExerciseId(){
-  let id;
-  do{id="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}while(EX[id]);
-  return id;
+let libraryChoices=new Map();
+/** Normalize whitespace/punctuation so e.g. '티바 로우' finds '티바로우'. */
+function librarySearchKey(value){
+  return String(value||"").normalize("NFKC").toLocaleLowerCase("ko")
+    .replace(/[\s\u00a0\u200b\-_.·()（）/]/g,"");
 }
+/** Include active, hidden, default and alternative exercises. Distinct routines
+ *  with the same exercise name stay visible with a source label. */
 function libraryEntries(){
-  // A source exercise is copied into the target routine with a new ID.
-  // This keeps historical records isolated from other sessions.
-  const seen=new Set(),items=[];
-  for(const sess of SESS)for(const ex of sess.ex){
-    if(ex.del||seen.has(ex.n.trim()))continue;
-    seen.add(ex.n.trim());
-    items.push({exercise:ex,session:sess.name});
-  }
-  return items.sort((a,b)=>a.exercise.n.localeCompare(b.exercise.n,'ko'));
+  const items=[],seen=new Set();
+  const add=(ex,session,kind,sourceKey)=>{
+    if(!ex||!String(ex.n||"").trim())return;
+    const key=sourceKey+"|"+kind+"|"+String(ex.n).trim();
+    if(seen.has(key))return;
+    seen.add(key);
+    items.push({key,exercise:ex,session,kind});
+  };
+  const addSession=(sess,kind)=>{
+    for(const ex of sess.ex){
+      const sourceKey=sess.id+":"+ex.id;
+      add(ex,sess.short||sess.name,ex.del?"숨긴 종목":kind,sourceKey);
+      for(const alt of (Array.isArray(ex.alts)?ex.alts:[])){
+        const name=String(alt||"").trim();
+        if(!name)continue;
+        const template={...ex,n:name,t:null,note:"",tgt:"",top:0,alts:[],del:false};
+        add(template,sess.short||sess.name,"대체 종목",sourceKey);
+      }
+    }
+  };
+  for(const sess of SESS)addSession(sess,"현재 루틴");
+  for(const sess of SESS_DEFAULT)addSession(sess,"기본 루틴");
+  return items.sort((a,b)=>a.exercise.n.localeCompare(b.exercise.n,"ko")||a.session.localeCompare(b.session,"ko"));
 }
-function closeExerciseLibrary(){libraryIntent=null;$("exerciseLibrary").hidden=true}
+function closeExerciseLibrary(){libraryIntent=null;libraryChoices.clear();$("exerciseLibrary").hidden=true}
 function displayExerciseLibrary(){
   if(!libraryIntent)return;
-  const query=$("librarySearch").value.trim().toLowerCase();
-  const items=libraryEntries().filter(x=>x.exercise.n.toLowerCase().includes(query));
+  const query=librarySearchKey($("librarySearch").value.trim());
+  const items=libraryEntries().filter(x=>{
+    const searchable=x.exercise.n+" "+x.exercise.part+" "+x.session+" "+x.kind;
+    return librarySearchKey(searchable).includes(query);
+  });
+  libraryChoices=new Map(items.map(x=>[x.key,x.exercise]));
   $("libraryItems").replaceChildren();
-  for(const {exercise,session:sourceSession} of items){
+  const count=document.createElement("p");
+  count.className="library-count";
+  count.textContent=`검색 결과 ${items.length}개 · 이름이 같아도 루틴별로 표시`;
+  $("libraryItems").appendChild(count);
+  for(const itemData of items){
+    const {key,exercise,session,kind}=itemData;
     const item=document.createElement("button");item.type="button";
     item.textContent=exercise.n;
-    const meta=document.createElement("small");meta.textContent=sourceSession+(exercise.part?" · "+exercise.part:"");item.appendChild(meta);
-    item.onclick=()=>chooseLibraryExercise(exercise.id);
+    const meta=document.createElement("small");
+    meta.textContent=session+" · "+kind+(exercise.part?" · "+exercise.part:"");
+    item.appendChild(meta);
+    item.onclick=()=>chooseLibraryExercise(key);
     $("libraryItems").appendChild(item);
   }
-  if(!items.length){const empty=document.createElement("p");empty.textContent="해당하는 운동종목이 없습니다.";$("libraryItems").appendChild(empty)}
+  if(!items.length){
+    const empty=document.createElement("p");
+    empty.textContent="검색 결과가 없습니다. 검색어를 짧게 입력하거나 '새 종목'에서 직접 추가하세요.";
+    $("libraryItems").appendChild(empty);
+  }
 }
 function openExerciseLibrary(mode,sid,replaceId){
   libraryIntent={mode,sid,replaceId};
   $("libraryTitle").textContent=mode==="replace"?"전체 운동에서 종목 변경":"전체 운동에서 종목 추가";
-  $("libraryHint").textContent="선택한 종목의 설정을 복사하고 과거 기록은 유지합니다. 루틴 구성은 모든 날짜에 적용됩니다.";
+  $("libraryHint").textContent="전체 5개 루틴 + 기본 종목 + 대체 종목 + 숨긴 종목에서 검색합니다. 선택하면 현재 루틴으로 복사합니다.";
   $("librarySearch").value="";$("exerciseLibrary").hidden=false;
   displayExerciseLibrary();$("librarySearch").focus();
 }
-function chooseLibraryExercise(sourceId){
-  const intent=libraryIntent,source=EX[sourceId];
+function chooseLibraryExercise(choiceKey){
+  const intent=libraryIntent,source=libraryChoices.get(choiceKey);
   if(!intent||!source)return;
   const dest=SMAP[intent.sid];if(!dest)return;
-  if(activeEx(dest).some(x=>x.n===source.n&&x.id!==intent.replaceId)){
+  if(activeEx(dest).some(x=>librarySearchKey(x.n)===librarySearchKey(source.n)&&x.id!==intent.replaceId)){
     toast("이 루틴에 같은 이름의 종목이 이미 있습니다.");return;
   }
   const apply=()=>{
@@ -724,7 +757,6 @@ function chooseLibraryExercise(sourceId){
     delete clone.s;
     const old=dest.ex.find(x=>x.id===intent.replaceId);
     if(intent.mode==="replace"&&old){
-      // Do not delete the original exercise identity, which may have history.
       const pos=dest.ex.indexOf(old);old.del=true;
       dest.ex.splice(pos+1,0,clone);
       open.delete(old.id);
