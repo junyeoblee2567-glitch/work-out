@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>3분할 운동일지</title>
+<title>운동일지 · 워치 연동</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="운동일지">
@@ -123,6 +123,7 @@ body.timing main .wrap{padding-bottom:120px}
 .set{display:grid;grid-template-columns:44px 1fr 12px 1fr 28px 30px;align-items:center;gap:5px}
 .prb{font-size:10.5px;font-weight:700;color:var(--surface);background:var(--done);border-radius:4px;padding:1px 0;text-align:center;letter-spacing:.02em}
 .field input::placeholder{color:var(--muted);opacity:.55}
+.set-previous{padding:0 8px 5px 52px;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--line)}
 .lastsets{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .lastsets b{font-family:var(--f-mono);font-weight:500;color:var(--ink)}
 .lastsets i{font-style:normal;font-size:11px}
@@ -376,7 +377,7 @@ const activeEx=x=>x.ex.filter(e=>!e.del);
 applyRoutine(null);
 const PREFIX={m:"A",t:"B",w:"C",f:"D",s:"E"}; // 예전(요일 고정) 기록의 종목 id → 세션
 const DOW=["일","월","화","수","목","금","토"];
-const TAG={W:"웜업",T:"탑",D:"드롭"}, TAG_NEXT={"":"T",T:"D",D:"W",W:""};
+const TAG={W:"웜업",T:"탑",B:"백오프",D:"드롭"}, TAG_NEXT={"":"T",T:"B",B:"D",D:"W",W:""};
 
 let docs={}, KEYS=[], backend=null, loaded=false;
 let tab="day", view=today(), changing=false;
@@ -500,6 +501,18 @@ function renderPicker(k,b){
   return h;
 }
 
+// Last same-session workout is the only source of previous sets (matches Wear OS).
+function previousSessionSnapshot(sid,k){
+  const dates=KEYS.filter(d=>d<k&&docs[d]&&docs[d].session===sid&&Object.values(docs[d].sets||{}).some(a=>Array.isArray(a)&&a.length));
+  if(!dates.length)return null;
+  const date=dates[dates.length-1];
+  return {date,sets:docs[date].sets||{}};
+}
+function previousExerciseSet(snapshot,id,index){
+  if(!snapshot)return null;
+  const sets=snapshot.sets[id];
+  return Array.isArray(sets)?sets[index]||null:null;
+}
 const lsGet=k=>{try{return Number(localStorage.getItem(k))||0}catch(e){return 0}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,String(v))}catch(e){}};
 function backupNag(){
@@ -511,14 +524,14 @@ function backupNag(){
 function renderDay(){
   const app=$("app"),k=keyOf(view),b=body(k),nag=backupNag();
   if(!b.session||changing){app.innerHTML=nag+renderPicker(k,b);return}
-  const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s);
+  const s=SMAP[b.session],idx=buildIndex(),act=activeEx(s),sessionSnapshot=previousSessionSnapshot(b.session,k);
   const shown=s.ex.filter(e=>!e.del||b.sets[e.id]||b.checks[e.id]);
   const n=act.filter(e=>b.checks[e.id]).length;
   let h=`<div class="dayhead" style="--c:var(${s.c})"><span class="k">${dayLabel(view)}</span><h2>${esc(s.name)}</h2><span class="prog"><b>${n}/${act.length}</b> 종목 완료</span><button class="chg" data-act="change">세션 변경</button></div><div class="list">`;
   if(!shown.length)h+=`<p class="hint">이 세션에 종목이 없어요. 아래에서 추가해 주세요.</p>`;
   for(const e of shown){
     const id=e.id,on=!!b.checks[id],my=b.sets[id]||[],nm=exName(id,b),isOpen=open.has(id);
-    const prev=((idx[nm]||{}).entries||[]).filter(x=>x.k<k),last=prev[prev.length-1],sg=suggest(e,last);
+    const previousInRoutine=sessionSnapshot&&sessionSnapshot.sets[id],last=previousInRoutine?{k:sessionSnapshot.date,sets:previousInRoutine}:null,sg=suggest(e,last);
     const meta=[e.tgt?`<span class="tg">${esc(e.tgt)}</span>`:"",esc(e.part)].filter(Boolean).join(" · ")+(sg&&sg.up&&!on?`<span class="upb">↑ 증량</span>`:"");
     h+=`<div class="card${on?" done":""}"><div class="row">
       <button class="chk" data-act="toggle" data-ex="${id}" aria-pressed="${on}" aria-label="${esc(nm)} 완료"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>
@@ -529,20 +542,20 @@ function renderDay(){
       const best=((idx[nm]||{}).entries||[]).reduce((m,x)=>Math.max(m,topSet(x.sets).kg),0);
       const vol=my.filter(x=>x.tag!=="W").reduce((a,x)=>a+num(x.kg)*num(x.reps),0);
       const base=prBase(nm,k,idx);
-      h+=`<div class="sets"><div class="hist">${last?`지난번 ${md(last.k)} · ${last.sets.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${e.sets}</b>세트</div>`;
-      if(last)h+=`<div class="lastsets">${last.sets.map((q,j)=>`<span><i>${q.tag?TAG[q.tag]:j+1}</i> <b>${fmtSet({kg:num(q.kg),reps:num(q.reps)})}</b></span>`).join("")}</div>`;
+      h+=`<div class="sets"><div class="hist">${previousInRoutine?`같은 루틴 최근 ${md(sessionSnapshot.date)} · ${previousInRoutine.length}세트`:"지난 기록 없음"}${best?` · 최고 <b>${fmt(best)}kg</b>`:""} · 오늘 <b>${doneCount(my)}/${e.sets}</b>세트</div>`;
+      
       if(sg)h+=`<div class="goal${sg.up?" up":""}"><span>오늘 목표</span><b>${e.top?"탑 ":""}${fmtSet(sg)}</b><small>${esc(sg.why)}${e.top&&sg.kg>0?` · 백오프는 약 ${fmt(roundTo(sg.kg*BACKOFF,stepOf(e)))}kg`:""}</small></div>`;
       let j=0;
-      my.forEach((x,i)=>{const g=x.tag==="W"?null:(last&&last.sets[j])||null;if(x.tag!=="W")j++;const pr=isPR(x,base);
+      my.forEach((x,i)=>{const g=previousExerciseSet(sessionSnapshot,id,i);const pr=isPR(x,base);
         h+=`<div class="set">
         <button class="tag t-${x.tag||"N"}" data-act="tag" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 종류 바꾸기">${x.tag?TAG[x.tag]:i+1}</button>
         <label class="field"><input id="kg-${k}-${id}-${i}" inputmode="decimal" enterkeyhint="next" data-act="kg" data-ex="${id}" data-i="${i}" value="${esc(x.kg)}" placeholder="${g&&num(g.kg)>0?esc(fmt(num(g.kg))):""}" aria-label="${i+1}세트 중량"><small>kg</small></label>
         <span class="x">×</span>
         <label class="field"><input id="rp-${k}-${id}-${i}" inputmode="numeric" enterkeyhint="done" data-act="reps" data-ex="${id}" data-i="${i}" value="${esc(x.reps)}" placeholder="${g&&num(g.reps)>0?esc(num(g.reps)):sg&&sg.reps?esc(sg.reps):""}" aria-label="${i+1}세트 횟수"><small>회</small></label>
         ${pr?`<span class="prb" title="신기록">PR</span>`:"<span></span>"}
-        <button class="del" data-act="delset" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`});
+        <button class="del" data-act="delset" data-ex="${id}" data-i="${i}" aria-label="${i+1}세트 삭제"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>${g?`<div class="set-previous">지난 ${i+1}세트 · ${fmtSet(g)}${g.tag?` · ${TAG[g.tag]||g.tag}`:""}</div>`:""}`});
       h+=`<div class="acts"><button class="add" data-act="addset" data-ex="${id}">+ 세트 추가</button>${my.length?`<button class="drop" data-act="adddrop" data-ex="${id}">+ 드롭</button>`:""}<button class="tbtn" data-act="timer" data-ex="${id}">⏱ ${mmss(e.rest)}</button>${vol?`<span class="vol">볼륨 ${vol.toLocaleString()}kg</span>`:""}</div>`;
-      if(my.length)h+=`<div class="legend">${e.top?`탑세트 다음 세트는 백오프 무게(탑의 약 ${Math.round(BACKOFF*1000)/10}%)로, `:""}'+ 드롭'은 직전 세트의 약 ${DROP*100}% 무게로 채워져요. 무게는 미리 채워지고, 횟수는 한 만큼 입력하면 돼요(흐린 숫자는 지난번 같은 세트). 세트 번호를 누르면 탑 → 드롭 → 웜업으로 바뀌고, 웜업·드롭은 세트 수에서 빠져요.</div>`;
+      if(my.length)h+=`<div class="legend">${e.top?`탑세트 다음 세트는 백오프 무게(탑의 약 ${Math.round(BACKOFF*1000)/10}%)로, `:""}'+ 드롭'은 직전 세트의 약 ${DROP*100}% 무게로 채워져요. 무게는 미리 채워지고, 횟수는 한 만큼 입력하면 돼요(흐린 숫자는 지난번 같은 세트). 각 세트 아래에 같은 루틴에서 마지막으로 수행한 해당 세트 기록을 표시합니다. 세트 번호를 누르면 탑 → 백오프 → 드롭 → 웜업으로 바뀝니다.</div>`;
       const opts=[e.n,...e.alts];if(!opts.includes(nm))opts.push(nm);
       h+=`<div class="alt"><span>기구가 없으면 교체</span>${opts.map(v=>`<button class="chip${v===nm?" on":""}" data-act="setalt" data-ex="${id}" data-v="${esc(v)}">${esc(v)}</button>`).join("")}
         <span class="altc"><input id="alt-${k}-${id}" placeholder="다른 종목 직접 입력" enterkeyhint="done" aria-label="교체할 종목 이름"><button data-act="altcustom" data-ex="${id}">적용</button></span></div>
@@ -877,7 +890,7 @@ document.addEventListener("click",ev=>{
   if(act==="addset"||act==="adddrop"){
     const e=EX[id],list=b.sets[id]||(b.sets[id]=[]),nm=exName(id,b),st=stepOf(e);
     const p=list[list.length-1],tops=list.filter(x=>x.tag==="T").length;
-    const fromSuggest=()=>{const en=((buildIndex()[nm]||{}).entries||[]).filter(x=>x.k<k),l=en[en.length-1],sg=suggest(e,l);if(sg)return {kg:sg.kg>0?sg.kg:"",reps:sg.reps||""};return {kg:"",reps:""}};
+    const fromSuggest=()=>{const snap=previousSessionSnapshot(b.session,k),arr=snap&&snap.sets[id],l=arr&&arr.length?{k:snap.date,sets:arr}:null,sg=suggest(e,l);if(sg)return {kg:sg.kg>0?sg.kg:"",reps:sg.reps||""};return {kg:"",reps:""}};
     let row;
     if(act==="adddrop"){if(!p)return;row={kg:num(p.kg)>0?roundTo(num(p.kg)*DROP,st):p.kg,reps:p.reps,tag:"D"}}
     else if(!p){row=fromSuggest();if(e.top)row.tag="T"}
@@ -886,7 +899,13 @@ document.addEventListener("click",ev=>{
     else if(p.tag==="T"){row={kg:num(p.kg)>0?roundTo(num(p.kg)*BACKOFF,st):p.kg,reps:num(p.reps)>0?num(p.reps)+2:p.reps}}
     else if(p.tag==="D"){const q=[...list].reverse().find(x=>x.tag!=="D"&&x.tag!=="W")||p;row={kg:q.kg,reps:q.reps}}
     else row={kg:p.kg,reps:p.reps};
-    row.reps="";  // 횟수는 실제로 한 만큼 직접 입력 (입력하는 순간 세트 완료·타이머·신기록 판정)
+    // Use the matching set from the latest SAME routine as reference; preserve recorded
+    // reps blank so a prior result cannot be mistaken for a completed current set.
+    if(act==="addset"){
+      const snapshot=previousSessionSnapshot(b.session,k),prior=previousExerciseSet(snapshot,id,list.length);
+      if(prior){row.kg=prior.kg;row.tag=prior.tag||"";row.reps="";}
+    }
+    row.reps="";  // Actual reps must be entered explicitly.
     list.push(row);persist(k,b);
     requestAnimationFrame(()=>{const el=$(`kg-${k}-${id}-${list.length-1}`);if(el){el.focus();el.select&&el.select()}});
     return;
